@@ -1,4 +1,4 @@
-# Cropart
+# Crop
 
 A personal drawing library organized with manually assigned tags. No AI and no application server: drawings and tags stay in your browser's local storage.
 
@@ -13,10 +13,15 @@ Open the address shown in the terminal (usually http://localhost:5173).
 
 ## Use the app
 
-- Drag drawings into the page (PNG, JPG, or WebP), or click **Add drawings**.
+- Drag drawings into the page (PNG, JPG, or WebP), or click **Add**.
+- Use the folder menu to create, rename, delete, and switch folders. Deleting a folder leaves its drawings in the unfiled collection.
+- Select several drawings to move them together. Use **Arrange drawings** and the arrow buttons to reorder them on touch screens; drag cards to swap their positions on desktop.
 - Open a drawing. Drag a rectangle to tag a specific area, or leave the image unselected to tag the whole drawing.
-- Search for a tag or click one of the tags above the grid to find matching drawings and regions.
-- Use **Hide tags** in the viewer to inspect the artwork without tag boxes. This only hides the overlays; it does not remove or change saved tags. Click **Show tags** to display them again.
+- Open the **Tags** menu below a drawing to choose which tags appear on it. Same-name tags are grouped and can be toggled together.
+- Search for a tag or choose one from the **Tags** menu to find matching drawings and regions.
+- Use **Backup** to download a local ZIP archive of drawings, folders, and tags. **Restore** merges a backup into the current library. Keep the archive somewhere safe; it is not uploaded or synced.
+- Deleting a drawing offers an **Undo** action for a few seconds.
+- Duplicate filenames show their import date and a short ID so they can be told apart.
 - Switch between light and dark mode with the theme button.
 
 ## Data and privacy
@@ -27,10 +32,11 @@ Drawings and tags are stored in IndexedDB in the browser. There are no accounts,
 
 This project can be hosted for free as a static site:
 
-1. Create a GitHub repository (for example, `cropart`).
-2. Add **the contents of this folder** to the repository root and push them to the `main` branch.
-3. Under **Settings → Pages**, choose **GitHub Actions** as the deployment source.
-4. On every push to `main`, the workflow in `.github/workflows/deploy.yml` checks and builds the project, then publishes the `dist` folder.
+1. Create a GitHub repository (for example, `crop`).
+2. Add **the contents of this folder** to the repository root.
+3. Push the project to the `main` branch.
+4. Under **Settings → Pages**, choose **GitHub Actions** as the deployment source.
+5. The workflow in `.github/workflows/deploy.yml` builds and publishes the site on each push to `main`. Check the **Actions** tab for the deployment status and URL.
 
 The base path for GitHub Pages is detected automatically during the build. User drawings and tags are not uploaded to GitHub; they remain in the local browser storage of each person using the site.
 

@@ -19,15 +19,32 @@ export interface DrawingRecord {
   blob: Blob
   thumb: Blob
   tags: Tag[]
+  folderId?: string
+  position?: number
+  visibleTagIds?: string[]
+}
+
+export interface FolderRecord {
+  id: string
+  name: string
 }
 
 class LibraryDB extends Dexie {
   drawings!: Table<DrawingRecord, string>
+  folders!: Table<FolderRecord, string>
 
   constructor() {
     super('drawing-library')
     this.version(1).stores({
       drawings: 'id, createdAt, name',
+    })
+    this.version(2).stores({
+      drawings: 'id, createdAt, name, folderId',
+      folders: 'id, name',
+    })
+    this.version(3).stores({
+      drawings: 'id, createdAt, name, folderId, position',
+      folders: 'id, name',
     })
   }
 }

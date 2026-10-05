@@ -164,6 +164,16 @@ button:disabled {
     color: #e66;
 }
 
+.status.notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status.notice button:last-child {
+    margin-left: auto;
+}
+
 main {
     padding: 16px;
 }
@@ -187,6 +197,66 @@ main {
     min-width: 0;
 }
 
+.drawing-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 34px;
+    padding-top: 4px;
+}
+
+.drawing-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.drawing-select,
+.library-actions label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.drawing-select input {
+    width: auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.reorder-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.reorder-buttons button {
+    min-width: 34px;
+    padding: 3px 7px;
+}
+
+.library-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.library-actions select {
+    max-width: 220px;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
 .card {
     position: relative;
     border: 1px solid var(--image-border);
@@ -196,6 +266,14 @@ main {
     padding: 0;
     overflow: hidden;
     background: var(--surface);
+}
+
+.card[draggable="true"] {
+    cursor: grab;
+}
+
+.card[draggable="true"]:active {
+    cursor: grabbing;
 }
 
 .badge {
@@ -262,6 +340,17 @@ main {
     gap: 8px;
 }
 
+.viewer-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 0 0 auto;
+    background: var(--surface);
+}
+
 .viewer-image {
     position: relative;
     outline: 1px solid var(--image-border);
@@ -272,6 +361,26 @@ main {
     cursor: crosshair;
     touch-action: none;
     user-select: none;
+}
+
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 0;
+    background: var(--surface);
+}
+
+.viewer .tag-form { flex: 0 0 auto; }
+.viewer .drawing-folder { flex: 0 0 auto; }
+.viewer figcaption { flex: 0 0 auto; }
+
+.zoom-controls span {
+    min-width: 4ch;
+    color: var(--muted);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .viewer-image img {
@@ -314,6 +423,26 @@ main {
     color: #fff;
     pointer-events: none;
     white-space: nowrap;
+}
+
+.whole-tags {
+    position: absolute;
+    z-index: 3;
+    top: 8px;
+    left: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: calc(100% - 16px);
+    pointer-events: none;
+}
+
+.whole-tags span {
+    padding: 1px 5px;
+    background: #000b;
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
 
 .tag-box.resizing {
@@ -412,12 +541,208 @@ main {
     border: 0;
 }
 
+.tag-menu {
+    position: relative;
+    border: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.tag-menu summary {
+    padding: 7px 10px;
+    cursor: pointer;
+    color: var(--text);
+}
+
+.tag-menu-content {
+    display: grid;
+    gap: 8px;
+    max-height: 240px;
+    padding: 8px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+}
+
+.tag-group {
+    display: grid;
+    gap: 4px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tag-group-title,
+.tag-entry,
+.tag-entry label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tag-group-title input,
+.tag-entry input {
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    accent-color: var(--text);
+}
+
+.tag-group-title span,
+.tag-entry label {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.tag-entry {
+    justify-content: space-between;
+    padding-left: 24px;
+}
+
+.tag-entry button {
+    padding: 2px 8px;
+    font-size: 0.8rem;
+}
+
 .tag-list {
+    position: relative;
+    z-index: 4;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     padding: 8px 16px;
     border-bottom: 1px solid var(--border);
+}
+
+.tag-filter-menu {
+    position: relative;
+    min-width: 220px;
+}
+
+.tag-filter-menu summary {
+    width: fit-content;
+    min-width: 220px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+.tag-filter-content {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 100%;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 8px 24px #0008;
+}
+
+.tag-filter-content button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.tag-filter-content button[aria-pressed="true"] {
+    color: var(--text);
+    border-color: var(--text);
+}
+
+.tag-filter-content button span {
+    color: var(--muted);
+}
+
+.folder-list {
+    position: relative;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.folder-menu {
+    position: relative;
+    min-width: 220px;
+}
+
+.folder-menu summary {
+    width: fit-content;
+    min-width: 220px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+.folder-menu-content {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    min-width: 100%;
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 8px 24px #0008;
+}
+
+.folder-menu-content button {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.folder-entry {
+    display: grid;
+    grid-template-columns: minmax(100px, 1fr) auto auto;
+}
+
+.folder-entry .folder-select {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.folder-entry .folder-action {
+    width: auto;
+    padding: 6px 8px;
+    font-size: 0.8rem;
+}
+
+.folder-list .folder-menu-content button[aria-pressed="true"] {
+    border-color: var(--text);
+    color: var(--text);
+}
+
+.drawing-folder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.drawing-folder select {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
 }
 
 .tag-list button {
