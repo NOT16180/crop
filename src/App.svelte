@@ -281,7 +281,7 @@
 
   async function deleteFolder(folder: FolderRecord) {
     const count = drawings.filter((drawing) => drawing.folderId === folder.id).length
-    if (!confirm(`Delete folder “${folder.name}”? ${count} image${count === 1 ? '' : 's'} will become unfiled.`)) return
+    if (!confirm(`Delete the folder “${folder.name}”? This removes only the folder. Its ${count} image${count === 1 ? '' : 's'} and tags will be kept in All images as unfiled.`)) return
     await Promise.all(drawings
       .filter((drawing) => drawing.folderId === folder.id)
       .map((drawing) => db.drawings.update(drawing.id, { folderId: undefined })))
@@ -326,7 +326,7 @@
   }
 
   async function restoreLibrary(file: File) {
-    if (!confirm('Import this backup into Crop? Its images will be added to your current library.')) return
+    if (!confirm('Merge this backup into your current library? Its images and folders will be added; existing images will stay. Make a Backup first if you may want to undo this, because Restore cannot be undone.')) return
     try {
       const { restoreBackup } = await import('./lib/backup')
       const result = await restoreBackup(file)
@@ -406,6 +406,33 @@
   async function removeTag(drawing: DrawingRecord, tagId: string) {
     visibleTagIds = visibleTagIds.filter((id) => id !== tagId)
     await saveTags(drawing.id, drawing.tags.filter((t) => t.id !== tagId))
+  }
+
+  async function renameTagGroup(label: string) {
+    const nextLabel = prompt(`Rename “${label}” everywhere in your library:`, label)?.trim()
+    if (!nextLabel || nextLabel === label) return
+    const oldKey = normalizeText(label)
+    const newKey = normalizeText(nextLabel)
+    const previous = new Map(drawings.map((drawing) => [drawing.id, drawing.tags]))
+    const changed = drawings.map((drawing) => ({
+      ...drawing,
+      tags: drawing.tags.map((tag) => normalizeText(tag.label) === oldKey ? { ...tag, label: nextLabel } : tag),
+    }))
+    try {
+      await db.transaction('rw', db.drawings, async () => {
+        for (const drawing of changed) {
+          if (drawing.tags.some((tag, index) => tag.label !== previous.get(drawing.id)?.[index]?.label)) {
+            await db.drawings.update(drawing.id, { tags: drawing.tags })
+          }
+        }
+      })
+      drawings = changed
+      selectedTagLabels = selectedTagLabels.map((selected) => selected === oldKey ? newKey : selected)
+      notice = `Renamed “${label}” to “${nextLabel}” throughout the library.`
+      error = ''
+    } catch {
+      error = 'Could not rename the tag. Check that browser storage is available, then try again.'
+    }
   }
 
   async function toggleTagVisibility(tagId: string, visible: boolean) {
@@ -658,8 +685,8 @@
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => (showHelp = !showHelp)}>{showHelp ? 'Back to library' : 'How to use'}</button>
   <button onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add</button>
-  <button type="button" onclick={backupLibrary}>Backup</button>
-  <button type="button" onclick={() => backupInput.click()}>Restore</button>
+  <button type="button" onclick={backupLibrary} title="Download a ZIP copy of your library to this device">Backup</button>
+  <button type="button" onclick={() => backupInput.click()} title="Merge a Crop backup into this library">Restore</button>
   <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
   <input
     bind:this={fileInput}
@@ -684,6 +711,8 @@
     }}
   />
 </header>
+
+<p class="data-warning" role="note"><strong>Keep a copy of your drawings.</strong> Crop stores images in this browser only. Keep the original files and download a Backup regularly; clearing browser data or losing access to this device may erase your library.</p>
 
 <nav class="folder-list" aria-label="Folders">
   <details class="folder-menu">
@@ -750,13 +779,13 @@
       <p>Type a tag in the search box to find matching images. Select a tag from the Tags menu to get the same results, including any tagged area. Select multiple tags to filter images that have all or any of those tags.</p>
 
       <h3>Add and manage tags</h3>
-      <p>Open an image to add tags. Type a tag for the whole image, or drag over an area first to tag just that part. Use the Tags menu in the viewer to show, hide, or remove tags.</p>
+      <p>Open an image to add tags. Type a tag for the whole image, or drag over an area first to tag just that part. In the Tags menu, rename a tag everywhere in your library, or remove it from this image.</p>
 
       <h3>Organize your library</h3>
-      <p>Create folders from the Folders menu and move images using the folder control in the viewer or the bulk selection tools. Sort by name or date, or arrange images manually.</p>
+      <p>Create folders from the Folders menu and move images using the folder control in the viewer or the bulk selection tools. Deleting a folder keeps its images and tags; they become unfiled under All images.</p>
 
       <h3>Backups and display</h3>
-      <p>Use <strong>Backup</strong> to download a copy of your library and <strong>Restore</strong> to import one. Switch between light and dark mode with the theme button.</p>
+      <p>Your drawings are stored only in this browser. Download a <strong>Backup</strong> ZIP regularly and keep a copy somewhere safe, especially before clearing browser data or moving devices. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
 
       <h3>Support this app</h3>
       <p>If you enjoy using the app, you can <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support me on Ko-fi</a>. Donations are entirely optional.</p>
@@ -766,7 +795,7 @@
     <section class="empty">
       <h2>Your library is empty</h2>
       <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
-      <p>Your library stays on this device.</p>
+      <p>Your library stays in this browser on this device. Keep the original files and use Backup regularly; clearing browser data can erase your library.</p>
     </section>
   {:else}
     {#if hasFilters}
@@ -992,6 +1021,7 @@
                   />
                   <strong>{group.label}</strong><span>({group.tags.length})</span>
                 </label>
+                <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
                 {#each group.tags as tag (tag.id)}
                   <div class="tag-entry">
                     <label>

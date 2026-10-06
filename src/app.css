@@ -187,6 +187,15 @@ button:disabled {
     gap: 8px;
 }
 
+.data-warning {
+    margin: 0;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
 .status.notice button:last-child {
     margin-left: auto;
 }
@@ -642,6 +651,12 @@ main {
 .tag-entry {
     justify-content: space-between;
     padding-left: 24px;
+}
+
+.rename-tag {
+    margin: 0 0 4px 24px;
+    padding: 2px 8px;
+    font-size: 0.8rem;
 }
 
 .tag-entry button {
