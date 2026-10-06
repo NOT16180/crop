@@ -1,23 +1,27 @@
 :root {
     color-scheme: dark;
-    --bg: #161616;
-    --surface: #161616;
-    --border: #eee;
-    --text: #eee;
-    --muted: #999;
-    --image-border: #eee;
+    --bg: #1b1a18;
+    --surface: #262421;
+    --surface-raised: #302d29;
+    --border: #49453f;
+    --text: #f1eee8;
+    --muted: #b0a99e;
+    --accent: #d2a878;
+    --image-border: #514c44;
     font-family: system-ui, sans-serif;
     line-height: 1.4;
 }
 
 :root[data-theme="light"] {
     color-scheme: light;
-    --bg: #fff;
-    --surface: #fff;
-    --border: #202020;
-    --text: #202020;
-    --muted: #686868;
-    --image-border: #202020;
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface-raised: #f0f1f7;
+    --border: #dfe2eb;
+    --text: #252a38;
+    --muted: #687083;
+    --accent: #6d4bd1;
+    --image-border: #e2e5ed;
 }
 
 * {
@@ -42,6 +46,18 @@ h1 {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
+}
+
+.brand-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.support-link {
+    align-self: center;
+    color: var(--accent);
+    font-size: 0.9rem;
+    white-space: nowrap;
 }
 
 form {
@@ -144,7 +160,8 @@ button {
 }
 
 button:hover {
-    border-color: var(--text);
+    border-color: var(--accent);
+    background: var(--surface-raised);
 }
 
 button:disabled {
@@ -181,6 +198,32 @@ main {
 .results-title {
     margin: 0 0 12px;
     color: var(--muted);
+}
+
+.help-page {
+    max-width: 760px;
+    margin: 16px auto;
+    padding: 24px;
+    border: 1px solid var(--border);
+    line-height: 1.65;
+}
+
+.help-page h2 {
+    margin: 0 0 16px;
+}
+
+.help-page h3 {
+    margin: 24px 0 4px;
+    font-size: 1rem;
+}
+
+.help-page p {
+    margin: 4px 0;
+    color: var(--muted);
+}
+
+.help-page a {
+    color: var(--accent);
 }
 
 .grid {
@@ -265,6 +308,7 @@ main {
     aspect-ratio: 1;
     padding: 0;
     overflow: hidden;
+    border-radius: 0;
     background: var(--surface);
 }
 
@@ -328,6 +372,10 @@ main {
     position: absolute;
     inset: 0;
     border: 0;
+    background: #000d;
+}
+
+.viewer-backdrop:hover {
     background: #000d;
 }
 
@@ -582,7 +630,7 @@ main {
     width: auto;
     min-width: 0;
     margin: 0;
-    accent-color: var(--text);
+    accent-color: var(--accent);
 }
 
 .tag-group-title span,
@@ -655,7 +703,7 @@ main {
     width: auto;
     min-width: 0;
     margin: 0;
-    accent-color: var(--text);
+    accent-color: var(--accent);
 }
 
 .tag-filter-option span {

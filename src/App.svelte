@@ -34,6 +34,7 @@
   let dragging = $state(false)
   let error = $state('')
   let theme = $state<'dark' | 'light'>('dark')
+  let showHelp = $state(false)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
   let zoom = $state(1)
@@ -67,24 +68,27 @@
   const folderDrawings = $derived((selectedFolderId
     ? drawings.filter((drawing) => drawing.folderId === selectedFolderId)
     : drawings).toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0)))
-  const filteredDrawings = $derived(folderDrawings.filter((drawing) => {
+  const sortedFolderDrawings = $derived(folderDrawings.toSorted((a, b) => {
+    if (sortMode === 'name') return a.name.localeCompare(b.name) || (a.position ?? 0) - (b.position ?? 0)
+    if (sortMode === 'newest') return b.createdAt - a.createdAt
+    if (sortMode === 'oldest') return a.createdAt - b.createdAt
+    return (a.position ?? 0) - (b.position ?? 0)
+  }))
+  const filteredDrawings = $derived(sortedFolderDrawings.filter((drawing) => {
     if (selectedTagLabels.length === 0) return true
     const labels = new Set(drawing.tags.map((tag) => normalizeText(tag.label)))
     return tagMatchMode === 'all'
       ? selectedTagLabels.every((label) => labels.has(label))
       : selectedTagLabels.some((label) => labels.has(label))
   }))
-  const sortedDrawings = $derived(filteredDrawings.toSorted((a, b) => {
-    if (sortMode === 'name') return a.name.localeCompare(b.name) || (a.position ?? 0) - (b.position ?? 0)
-    if (sortMode === 'newest') return b.createdAt - a.createdAt
-    if (sortMode === 'oldest') return a.createdAt - b.createdAt
-    return (a.position ?? 0) - (b.position ?? 0)
-  }))
+  const sortedDrawings = $derived(filteredDrawings)
   const searching = $derived(query.trim().length > 0)
   const hasFilters = $derived(searching || selectedTagLabels.length > 0)
+  const activeSearchQuery = $derived(searching ? query : selectedTagLabels.length === 1 ? selectedTagLabels[0] : '')
+  const searchCandidates = $derived(!searching && selectedTagLabels.length === 1 ? sortedFolderDrawings : sortedDrawings)
   const items = $derived<Item[]>(
-    searching
-      ? findTagged(query, sortedDrawings).map((hit, i) => ({
+    activeSearchQuery
+      ? findTagged(activeSearchQuery, searchCandidates).map((hit, i) => ({
           key: `${hit.drawing.id}:${i}`,
           drawing: hit.drawing,
           box: hit.box,
@@ -277,7 +281,7 @@
 
   async function deleteFolder(folder: FolderRecord) {
     const count = drawings.filter((drawing) => drawing.folderId === folder.id).length
-    if (!confirm(`Delete folder “${folder.name}”? ${count} drawing${count === 1 ? '' : 's'} will become unfiled.`)) return
+    if (!confirm(`Delete folder “${folder.name}”? ${count} image${count === 1 ? '' : 's'} will become unfiled.`)) return
     await Promise.all(drawings
       .filter((drawing) => drawing.folderId === folder.id)
       .map((drawing) => db.drawings.update(drawing.id, { folderId: undefined })))
@@ -307,7 +311,7 @@
     drawings = drawings.map((drawing) => selected.has(drawing.id) ? { ...drawing, folderId } : drawing)
     selectedDrawingIds = []
     selectionMode = false
-    notice = `Moved drawings to ${folders.find((folder) => folder.id === folderId)?.name ?? 'Unfiled'}.`
+    notice = `Moved images to ${folders.find((folder) => folder.id === folderId)?.name ?? 'Unfiled'}.`
   }
 
   async function backupLibrary() {
@@ -322,12 +326,12 @@
   }
 
   async function restoreLibrary(file: File) {
-    if (!confirm('Import this backup into Crop? Its drawings will be added to your current library.')) return
+    if (!confirm('Import this backup into Crop? Its images will be added to your current library.')) return
     try {
       const { restoreBackup } = await import('./lib/backup')
       const result = await restoreBackup(file)
       await reload()
-      notice = `Restored ${result.drawings} drawing${result.drawings === 1 ? '' : 's'} and ${result.folders} folder${result.folders === 1 ? '' : 's'}.`
+      notice = `Restored ${result.drawings} image${result.drawings === 1 ? '' : 's'} and ${result.folders} folder${result.folders === 1 ? '' : 's'}.`
       error = ''
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Could not restore this backup.'
@@ -355,7 +359,7 @@
     if (!files.length) return
     event.preventDefault()
     await addFiles(files)
-    if (!error) notice = `Pasted ${files.length} drawing${files.length === 1 ? '' : 's'} from the clipboard.`
+    if (!error) notice = `Pasted ${files.length} image${files.length === 1 ? '' : 's'} from the clipboard.`
   }
 
   function toggleTagFilter(label: string, checked: boolean) {
@@ -453,7 +457,7 @@
     await db.drawings.add(restored)
     pendingDelete = null
     await reload()
-    notice = 'Drawing restored.'
+    notice = 'Image restored.'
   }
 
   function openViewer(item: Item) {
@@ -615,12 +619,18 @@
 />
 
 <header>
-  <h1>Crop</h1>
+  <a class="brand-link" href="/" onclick={(event) => {
+    event.preventDefault()
+    showHelp = false
+    selectedFolderId = ''
+    selectedTagLabels = []
+    query = ''
+  }}><h1>CROP</h1></a>
   <form class="search-form" onsubmit={(e) => e.preventDefault()}>
     <div class="search-control">
       <input
         type="search"
-        placeholder="Search tags: face, hands, landscape…"
+        placeholder="Search images by tag (e.g. face, hands, landscape)…"
         bind:value={query}
         aria-label="Search tags"
         autocomplete="off"
@@ -646,9 +656,11 @@
     aria-pressed={theme === 'light'}
     title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+  <button type="button" aria-pressed={showHelp} onclick={() => (showHelp = !showHelp)}>{showHelp ? 'Back to library' : 'How to use'}</button>
   <button onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add</button>
   <button type="button" onclick={backupLibrary}>Backup</button>
   <button type="button" onclick={() => backupInput.click()}>Restore</button>
+  <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
   <input
     bind:this={fileInput}
     type="file"
@@ -676,13 +688,13 @@
 <nav class="folder-list" aria-label="Folders">
   <details class="folder-menu">
     <summary>
-      Folder: {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'All drawings'}
+      Folder: {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'All images'}
       ({selectedFolderId
         ? drawings.filter((drawing) => drawing.folderId === selectedFolderId).length
         : drawings.length})
     </summary>
     <div class="folder-menu-content">
-      <button aria-pressed={!selectedFolderId} onclick={() => { selectedFolderId = ''; query = '' }}>All drawings ({drawings.length})</button>
+      <button aria-pressed={!selectedFolderId} onclick={() => { selectedFolderId = ''; query = '' }}>All images ({drawings.length})</button>
       {#each folders as folder (folder.id)}
         <div class="folder-entry">
           <button class="folder-select" aria-pressed={selectedFolderId === folder.id} onclick={() => { selectedFolderId = folder.id; query = '' }}>
@@ -729,33 +741,54 @@
 {/if}
 
 <main>
+  {#if showHelp}
+    <article class="help-page">
+      <h2>How to use the image library</h2>
+      <p>Add PNG, JPG, or WebP images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot.</p>
+
+      <h3>Find images with tags</h3>
+      <p>Type a tag in the search box to find matching images. Select a tag from the Tags menu to get the same results, including any tagged area. Select multiple tags to filter images that have all or any of those tags.</p>
+
+      <h3>Add and manage tags</h3>
+      <p>Open an image to add tags. Type a tag for the whole image, or drag over an area first to tag just that part. Use the Tags menu in the viewer to show, hide, or remove tags.</p>
+
+      <h3>Organize your library</h3>
+      <p>Create folders from the Folders menu and move images using the folder control in the viewer or the bulk selection tools. Sort by name or date, or arrange images manually.</p>
+
+      <h3>Backups and display</h3>
+      <p>Use <strong>Backup</strong> to download a copy of your library and <strong>Restore</strong> to import one. Switch between light and dark mode with the theme button.</p>
+
+      <h3>Support this app</h3>
+      <p>If you enjoy using the app, you can <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support me on Ko-fi</a>. Donations are entirely optional.</p>
+    </article>
+  {:else}
   {#if drawings.length === 0}
     <section class="empty">
       <h2>Your library is empty</h2>
-      <p>Drop drawings here (PNG, JPG, WebP), or click “Add drawings”.</p>
+      <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
       <p>Your library stays on this device.</p>
     </section>
   {:else}
     {#if hasFilters}
-      <p class="results-title">{items.length} {items.length === 1 ? 'drawing' : 'drawings'} match{searching ? ` “${query.trim()}”` : ''}{selectedTagLabels.length ? ` · ${selectedTagLabels.length} tag${selectedTagLabels.length === 1 ? '' : 's'} (${tagMatchMode === 'all' ? 'all' : 'any'})` : ''}.</p>
+      <p class="results-title">{items.length} {items.length === 1 ? 'image' : 'images'} match{activeSearchQuery ? ` “${activeSearchQuery.trim()}”` : ''}{selectedTagLabels.length > (activeSearchQuery && !searching ? 1 : 0) ? ` · ${selectedTagLabels.length} tags (${tagMatchMode === 'all' ? 'all' : 'any'})` : ''}.</p>
     {/if}
     {#if hasFilters && items.length === 0}
-      <p class="results-title">No drawings match these filters.</p>
+      <p class="results-title">No images match these filters.</p>
     {/if}
     {#if folderDrawings.length === 0 && !hasFilters}
-      <p class="results-title">This folder is empty. Add drawings to it.</p>
+      <p class="results-title">This folder is empty. Add images to it.</p>
     {:else if items.length > 0}
       <div class="library-actions">
         {#if !selectionMode}
-          <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>Select drawings</button>
+          <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>Select images</button>
         {/if}
         {#if !arrangingDrawings}
-          <button type="button" onclick={() => { arrangingDrawings = true; selectionMode = false }}>Arrange drawings</button>
+          <button type="button" onclick={() => { arrangingDrawings = true; selectionMode = false }}>Arrange images</button>
         {:else}
           <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
         {/if}
         <label>Sort
-          <select bind:value={sortMode} aria-label="Sort drawings">
+          <select bind:value={sortMode} aria-label="Sort images">
             <option value="manual">Manual order</option>
             <option value="name">Name</option>
             <option value="newest">Newest first</option>
@@ -791,7 +824,7 @@
             ondrop={(event) => dropDrawing(event, item.drawing.id)}
               onclick={() => openCard(item)}
               aria-label={`Open ${drawingDisplayName(item.drawing)}`}
-              title={searching ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
+              title={activeSearchQuery ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
             >
               {#if item.box}
                 <Crop blob={item.drawing.blob} box={item.box} alt={item.drawing.name} />
@@ -813,9 +846,9 @@
                 </label>
               {/if}
               {#if arrangingDrawings && !hasFilters && sortMode === 'manual'}
-                <div class="reorder-buttons" aria-label="Reorder {item.drawing.name}">
-                  <button type="button" disabled={index === 0} onclick={() => moveDrawing(item.drawing.id, -1)} aria-label="Move {item.drawing.name} earlier">↑</button>
-                  <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => moveDrawing(item.drawing.id, 1)} aria-label="Move {item.drawing.name} later">↓</button>
+                <div class="reorder-buttons" aria-label="Reorder image {item.drawing.name}">
+                  <button type="button" disabled={index === 0} onclick={() => moveDrawing(item.drawing.id, -1)} aria-label="Move image {item.drawing.name} earlier">↑</button>
+                  <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => moveDrawing(item.drawing.id, 1)} aria-label="Move image {item.drawing.name} later">↓</button>
                 </div>
               {/if}
             </div>
@@ -824,18 +857,19 @@
       </ul>
     {/if}
   {/if}
+  {/if}
 </main>
 
 {#if dragging}
-  <div class="drop-overlay">Drop drawings here to add them</div>
+  <div class="drop-overlay">Drop images here to add them</div>
 {/if}
 
 {#if viewer}
   <div class="viewer" bind:this={viewerDialog} role="dialog" aria-modal="true" aria-label={viewer.name} tabindex="-1">
     <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
-    <figure style="max-height: calc(100dvh - 24px); overflow: auto" aria-label="Drawing and tag controls">
+    <figure style="max-height: calc(100dvh - 24px); overflow: auto" aria-label="Image and tag controls">
       <div class="viewer-toolbar">
-      <div class="zoom-controls" aria-label="Drawing zoom controls">
+      <div class="zoom-controls" aria-label="Image zoom controls">
         <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
         <span aria-live="polite">{Math.round(zoom * 100)}%</span>
         <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in">+</button>
@@ -878,7 +912,7 @@
               </span>
             {/if}
           {/each}
-          <div class="whole-tags" aria-label="Whole drawing tags">
+          <div class="whole-tags" aria-label="Whole image tags">
             {#each viewer.tags.filter((tag) => !tag.box && visibleTagIds.includes(tag.id)) as tag (tag.id)}
               <span>{tag.label}</span>
             {/each}
@@ -913,7 +947,7 @@
         <div class="tag-input-wrap">
           <input
             type="text"
-            placeholder={selection ? 'Tag the selected area' : 'Tag the whole drawing (or drag to select an area)'}
+            placeholder={selection ? 'Tag the selected area' : 'Tag the whole image (or drag to select an area)'}
             bind:value={tagInput}
             aria-label="New tag"
             autocomplete="off"
@@ -966,7 +1000,7 @@
                         checked={visibleTagIds.includes(tag.id)}
                         onchange={(event) => toggleTagVisibility(tag.id, event.currentTarget.checked)}
                       />
-                      {tag.box ? 'Area' : 'Whole drawing'}
+                      {tag.box ? 'Area' : 'Whole image'}
                     </label>
                     <button type="button" onclick={() => viewer && removeTag(viewer, tag.id)} aria-label="Remove {tag.label} tag">Remove</button>
                   </div>
@@ -986,7 +1020,7 @@
             aria-pressed={showTagOverlays}
             title={showTagOverlays ? 'Hide tag overlays without deleting tags' : 'Show tag overlays'}
           >{showTagOverlays ? 'Hide tags' : 'Show tags'}</button>
-          <button onclick={() => viewer && remove(viewer)}>Delete drawing</button>
+          <button onclick={() => viewer && remove(viewer)}>Delete image</button>
           <button onclick={closeViewer}>Close</button>
         </span>
       </figcaption>
