@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
   import { importFiles, deleteDrawings, isAcceptedImage } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
@@ -19,6 +19,9 @@
   let drawings = $state.raw<DrawingRecord[]>([])
   let folders = $state.raw<FolderRecord[]>([])
   let selectedFolderId = $state('')
+  let selectedTagLabels = $state<string[]>([])
+  let tagMatchMode = $state<'all' | 'any'>('all')
+  let sortMode = $state<'manual' | 'name' | 'newest' | 'oldest'>('manual')
   let selectionMode = $state(false)
   let arrangingDrawings = $state(false)
   let selectedDrawingIds = $state<string[]>([])
@@ -45,6 +48,8 @@
   let imageBox: HTMLDivElement | undefined = $state()
   let fileInput: HTMLInputElement
   let backupInput: HTMLInputElement
+  let viewerDialog: HTMLDivElement | undefined = $state()
+  let returnFocusTarget: HTMLElement | null = null
   let deleteTimer: ReturnType<typeof setTimeout> | undefined
 
   const byId = $derived(new Map(drawings.map((d) => [d.id, d])))
@@ -62,16 +67,30 @@
   const folderDrawings = $derived((selectedFolderId
     ? drawings.filter((drawing) => drawing.folderId === selectedFolderId)
     : drawings).toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0)))
+  const filteredDrawings = $derived(folderDrawings.filter((drawing) => {
+    if (selectedTagLabels.length === 0) return true
+    const labels = new Set(drawing.tags.map((tag) => normalizeText(tag.label)))
+    return tagMatchMode === 'all'
+      ? selectedTagLabels.every((label) => labels.has(label))
+      : selectedTagLabels.some((label) => labels.has(label))
+  }))
+  const sortedDrawings = $derived(filteredDrawings.toSorted((a, b) => {
+    if (sortMode === 'name') return a.name.localeCompare(b.name) || (a.position ?? 0) - (b.position ?? 0)
+    if (sortMode === 'newest') return b.createdAt - a.createdAt
+    if (sortMode === 'oldest') return a.createdAt - b.createdAt
+    return (a.position ?? 0) - (b.position ?? 0)
+  }))
   const searching = $derived(query.trim().length > 0)
+  const hasFilters = $derived(searching || selectedTagLabels.length > 0)
   const items = $derived<Item[]>(
     searching
-      ? findTagged(query, folderDrawings).map((hit, i) => ({
+      ? findTagged(query, sortedDrawings).map((hit, i) => ({
           key: `${hit.drawing.id}:${i}`,
           drawing: hit.drawing,
           box: hit.box,
           label: hit.label,
         }))
-      : folderDrawings.map((d) => ({ key: d.id, drawing: d, box: null })),
+      : sortedDrawings.map((d) => ({ key: d.id, drawing: d, box: null })),
   )
   const tagList = $derived.by(() => {
     const counts = new Map<string, { label: string; count: number }>()
@@ -208,7 +227,7 @@
   }
 
   async function moveDrawing(id: string, offset: number) {
-    if (searching) return
+    if (searching || selectedTagLabels.length) return
     const index = folderDrawings.findIndex((drawing) => drawing.id === id)
     const target = folderDrawings[index + offset]
     if (index < 0 || !target) return
@@ -328,6 +347,24 @@
     addFiles([...(event.dataTransfer?.files ?? [])])
   }
 
+  async function onPaste(event: ClipboardEvent) {
+    const files = [...(event.clipboardData?.items ?? [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (!files.length) return
+    event.preventDefault()
+    await addFiles(files)
+    if (!error) notice = `Pasted ${files.length} drawing${files.length === 1 ? '' : 's'} from the clipboard.`
+  }
+
+  function toggleTagFilter(label: string, checked: boolean) {
+    const key = normalizeText(label)
+    selectedTagLabels = checked
+      ? [...new Set([...selectedTagLabels, key])]
+      : selectedTagLabels.filter((selected) => selected !== key)
+  }
+
   async function saveTags(id: string, tags: Tag[]) {
     await db.drawings.update(id, { tags, visibleTagIds })
     drawings = drawings.map((d) => (d.id === id ? { ...d, tags, visibleTagIds } : d))
@@ -410,6 +447,7 @@
   }
 
   function openViewer(item: Item) {
+    returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeViewer()
     showTagOverlays = true
     visibleTagIds = item.drawing.visibleTagIds ?? item.drawing.tags.map((tag) => tag.id)
@@ -417,9 +455,11 @@
     viewerId = item.drawing.id
     viewerBox = item.box
     viewerUrl = URL.createObjectURL(item.drawing.blob)
+    void tick().then(() => viewerDialog?.querySelector<HTMLElement>('.zoom-controls button:not([disabled])')?.focus())
   }
 
   function closeViewer() {
+    const shouldRestoreFocus = Boolean(viewerId)
     if (viewerUrl) URL.revokeObjectURL(viewerUrl)
     viewerUrl = ''
     zoom = 1
@@ -429,6 +469,10 @@
     resizing = null
     tagInput = ''
     dragStart = null
+    if (shouldRestoreFocus) void tick().then(() => {
+      if (returnFocusTarget?.isConnected) returnFocusTarget.focus()
+      returnFocusTarget = null
+    })
   }
 
   function changeZoom(amount: number) {
@@ -436,9 +480,24 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key !== 'Escape') return
-    if (selection) selection = null
-    else closeViewer()
+    if (e.key === 'Escape') {
+      if (selection) selection = null
+      else if (viewer) closeViewer()
+      return
+    }
+    if (e.key !== 'Tab' || !viewerDialog) return
+    const focusable = [...viewerDialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex="0"]')]
+      .filter((element) => element.getClientRects().length > 0)
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey && (document.activeElement === first || !viewerDialog.contains(document.activeElement))) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
   }
 
   function pointOnImage(e: PointerEvent) {
@@ -532,6 +591,7 @@
 
 <svelte:window
   onkeydown={onKeydown}
+  onpaste={onPaste}
   ondragover={(e) => {
     if (e.dataTransfer?.types.includes('Files')) {
       e.preventDefault()
@@ -576,7 +636,7 @@
     aria-pressed={theme === 'light'}
     title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
-  <button onclick={() => fileInput.click()}>Add</button>
+  <button onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add</button>
   <button type="button" onclick={backupLibrary}>Backup</button>
   <button type="button" onclick={() => backupInput.click()}>Restore</button>
   <input
@@ -632,15 +692,17 @@
     <details class="tag-filter-menu">
       <summary>Tags{searching ? ` · ${query.trim()}` : ''} ({tagList.length})</summary>
       <div class="tag-filter-content">
+        <fieldset class="tag-filter-mode">
+          <legend>Match</legend>
+          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'all'} onchange={() => (tagMatchMode = 'all')} /> All selected</label>
+          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'any'} onchange={() => (tagMatchMode = 'any')} /> Any selected</label>
+        </fieldset>
+        {#if selectedTagLabels.length}<button type="button" class="clear-tag-filters" onclick={() => (selectedTagLabels = [])}>Clear selected tags</button>{/if}
         {#each tagList as entry (entry.label)}
-          <button
-            type="button"
-            aria-pressed={normalizeText(query) === normalizeText(entry.label)}
-            onclick={(event) => {
-              query = entry.label
-              event.currentTarget.closest('details')?.removeAttribute('open')
-            }}
-          >{entry.label}<span>{entry.count}</span></button>
+          <label class="tag-filter-option">
+            <input type="checkbox" checked={selectedTagLabels.includes(normalizeText(entry.label))} onchange={(event) => toggleTagFilter(entry.label, event.currentTarget.checked)} />
+            {entry.label}<span>{entry.count}</span>
+          </label>
         {/each}
       </div>
     </details>
@@ -664,15 +726,15 @@
       <p>Your library stays on this device.</p>
     </section>
   {:else}
-    {#if searching}
-      <p class="results-title">{items.length} {items.length === 1 ? 'result' : 'results'} for “{query.trim()}”</p>
+    {#if hasFilters}
+      <p class="results-title">{items.length} {items.length === 1 ? 'drawing' : 'drawings'} match{searching ? ` “${query.trim()}”` : ''}{selectedTagLabels.length ? ` · ${selectedTagLabels.length} tag${selectedTagLabels.length === 1 ? '' : 's'} (${tagMatchMode === 'all' ? 'all' : 'any'})` : ''}.</p>
     {/if}
-    {#if searching && items.length === 0}
-      <p class="results-title">No drawings match this tag. Open a drawing to add it.</p>
+    {#if hasFilters && items.length === 0}
+      <p class="results-title">No drawings match these filters.</p>
     {/if}
-    {#if folderDrawings.length === 0 && !searching}
+    {#if folderDrawings.length === 0 && !hasFilters}
       <p class="results-title">This folder is empty. Add drawings to it.</p>
-    {:else}
+    {:else if items.length > 0}
       <div class="library-actions">
         {#if !selectionMode}
           <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>Select drawings</button>
@@ -682,6 +744,14 @@
         {:else}
           <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
         {/if}
+        <label>Sort
+          <select bind:value={sortMode} aria-label="Sort drawings">
+            <option value="manual">Manual order</option>
+            <option value="name">Name</option>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </label>
         {#if selectionMode}
           <span>{selectedDrawingIds.length} selected</span>
           <button type="button" onclick={selectAllVisible}>Select all visible</button>
@@ -701,7 +771,7 @@
             <button
               class="card"
               style:aspect-ratio={item.box ? item.box[2] / item.box[3] : item.drawing.width / item.drawing.height}
-            draggable={!searching}
+              draggable={!searching && selectedTagLabels.length === 0 && sortMode === 'manual'}
             ondragstart={(event) => startDrawingDrag(event, item.drawing.id)}
             ondragend={() => (draggedDrawingId = null)}
             ondragover={(event) => {
@@ -709,7 +779,8 @@
               event.stopPropagation()
             }}
             ondrop={(event) => dropDrawing(event, item.drawing.id)}
-            onclick={() => openCard(item)}
+              onclick={() => openCard(item)}
+              aria-label={`Open ${drawingDisplayName(item.drawing)}`}
               title={searching ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
             >
               {#if item.box}
@@ -731,7 +802,7 @@
                   Select
                 </label>
               {/if}
-              {#if arrangingDrawings && !searching}
+              {#if arrangingDrawings && !hasFilters && sortMode === 'manual'}
                 <div class="reorder-buttons" aria-label="Reorder {item.drawing.name}">
                   <button type="button" disabled={index === 0} onclick={() => moveDrawing(item.drawing.id, -1)} aria-label="Move {item.drawing.name} earlier">↑</button>
                   <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => moveDrawing(item.drawing.id, 1)} aria-label="Move {item.drawing.name} later">↓</button>
@@ -750,9 +821,9 @@
 {/if}
 
 {#if viewer}
-  <div class="viewer" role="dialog" aria-modal="true" aria-label={viewer.name}>
+  <div class="viewer" bind:this={viewerDialog} role="dialog" aria-modal="true" aria-label={viewer.name} tabindex="-1">
     <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
-    <figure style="max-height: calc(100vh - 32px); overflow-y: auto" aria-label="Drawing and tag controls">
+    <figure style="max-height: calc(100dvh - 24px); overflow: auto" aria-label="Drawing and tag controls">
       <div class="viewer-toolbar">
       <div class="zoom-controls" aria-label="Drawing zoom controls">
         <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
@@ -775,7 +846,7 @@
           alt={viewer.name}
           draggable="false"
           style:max-width={`calc((100vw - 32px) * ${zoom})`}
-          style:max-height={`calc((100vh - 280px) * ${zoom})`}
+          style:max-height={`calc((100dvh - 260px) * ${zoom})`}
         />
         {#if showTagOverlays}
           {#each viewer.tags as tag (tag.id)}
