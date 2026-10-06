@@ -610,6 +610,23 @@ main {
     color: var(--text);
 }
 
+summary {
+    list-style: none;
+}
+
+summary::-webkit-details-marker {
+    display: none;
+}
+
+summary::before {
+    content: ">";
+    margin-right: 8px;
+}
+
+details[open] > summary::before {
+    content: "v";
+}
+
 .tag-menu-content {
     display: grid;
     gap: 8px;
