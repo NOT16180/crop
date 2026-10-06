@@ -383,10 +383,20 @@
         ]
       : null
     const tag: Tag = { id: crypto.randomUUID(), label, box }
-    tagInput = ''
-    selection = null
-    visibleTagIds = [...visibleTagIds, tag.id]
-    await saveTags(drawing.id, [...drawing.tags, tag])
+    error = ''
+    try {
+      const nextVisibleTagIds = [...new Set([...visibleTagIds, tag.id])]
+      await db.drawings.update(drawing.id, { tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds })
+      visibleTagIds = nextVisibleTagIds
+      drawings = drawings.map((item) => item.id === drawing.id
+        ? { ...item, tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds }
+        : item)
+      tagInput = ''
+      selection = null
+    } catch (cause) {
+      console.error('Could not save tag', cause)
+      error = 'Could not save the tag. Check that browser storage is available, then try again.'
+    }
   }
 
   async function removeTag(drawing: DrawingRecord, tagId: string) {
@@ -922,6 +932,7 @@
         {#if selection}
           <button type="button" onclick={() => (selection = null)}>Cancel selection</button>
         {/if}
+        {#if error}<p class="status error" role="alert">{error}</p>{/if}
       </form>
 
       <label class="drawing-folder">Folder
