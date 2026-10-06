@@ -773,6 +773,8 @@
   {#if showHelp}
     <article class="help-page">
       <h2>How to use the image library</h2>
+      <p>Crop is a personal library for your drawings. Add tags to whole images or specific areas, then search those tags to find the drawing or detail you need. Your library stays in this browser on this device; Crop does not upload your images.</p>
+
       <p>Add PNG, JPG, or WebP images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot.</p>
 
       <h3>Find images with tags</h3>
