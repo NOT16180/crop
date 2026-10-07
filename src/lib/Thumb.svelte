@@ -11,7 +11,7 @@
 </script>
 
 {#if url}
-  <img src={url} {alt} loading="lazy" draggable="false" />
+  <img src={url} {alt} loading="lazy" decoding="async" draggable="false" />
 {/if}
 
 <style>
