@@ -50,6 +50,18 @@ The project can be hosted for free as a static site:
 
 The base path for GitHub Pages is detected automatically during the build. Drawings and tags belonging to people using the site are not uploaded to GitHub; they stay in each person's browser storage.
 
+## Deploy to Cloudflare Pages
+
+Crop is a static site and can be deployed to Cloudflare Pages without a backend:
+
+1. Import this repository in **Workers & Pages → Create → Pages → Connect to Git**.
+2. Set the build command to `npm run build` and the build output directory to `dist`. No root directory override is needed.
+3. Deploy. The `public/_headers` file is copied into the output and applies security and cache headers.
+
+For a manual deployment, run `npm install`, `npm run build`, then `npx wrangler pages deploy dist`. The root `wrangler.jsonc` records the Pages output directory and project settings for Wrangler. You can also use Cloudflare's Pages Direct Upload flow with the generated `dist` directory.
+
+The app uses browser storage only, so no Cloudflare database, Worker, or environment variables are required. Each visitor's library remains in that visitor's browser.
+
 ## Technology
 
 Vite, Svelte, TypeScript, and Dexie/IndexedDB. Build with `npm run build`; check types and Svelte components with `npm run check`.
