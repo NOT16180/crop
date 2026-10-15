@@ -1108,3 +1108,62 @@ details[open] > summary::before {
     outline: 2px solid #4da3ff;
     outline-offset: 2px;
 }
+
+/* Drag-to-folder highlight */
+.folder-drag-over {
+    border-color: var(--accent) !important;
+    background: color-mix(in srgb, var(--accent) 15%, var(--surface)) !important;
+}
+
+/* Danger button (bulk delete) */
+button.danger {
+    color: #e66;
+    border-color: #e664;
+}
+
+button.danger:hover {
+    background: color-mix(in srgb, #e66 15%, var(--surface));
+    border-color: #e66;
+}
+
+/* Bulk tag form in library actions */
+.bulk-tag-form {
+    display: contents;
+}
+
+.bulk-tag-form input {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    min-width: 0;
+}
+
+/* Load more button */
+.load-more {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    text-align: center;
+    color: var(--muted);
+    border-style: dashed;
+}
+
+.load-more:hover {
+    color: var(--text);
+}
+
+/* Tag entry actions (Download + Remove buttons side by side) */
+.tag-entry-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+@media (max-width: 640px) {
+    .bulk-tag-form input {
+        flex: 1 0 100%;
+    }
+}

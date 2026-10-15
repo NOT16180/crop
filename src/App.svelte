@@ -53,6 +53,13 @@
   let returnFocusTarget: HTMLElement | null = null
   let deleteTimer: ReturnType<typeof setTimeout> | undefined
 
+  const PAGE_SIZE = 80
+  let visibleCount = $state(PAGE_SIZE)
+  let persistenceWarning = $state(false)
+  let bulkTagInput = $state('')
+  let dragOverFolderId = $state<string | null>(null)
+
+
   const byId = $derived(new Map(drawings.map((d) => [d.id, d])))
   const viewer = $derived(viewerId ? (byId.get(viewerId) ?? null) : null)
   const viewerTagGroups = $derived.by(() => {
@@ -96,6 +103,7 @@
         }))
       : sortedDrawings.map((d) => ({ key: d.id, drawing: d, box: null })),
   )
+  const pagedItems = $derived(items.slice(0, visibleCount))
   const tagList = $derived.by(() => {
     const counts = new Map<string, { label: string; count: number }>()
     for (const d of folderDrawings) {
@@ -129,6 +137,11 @@
       .slice(0, 6)
   })
 
+  $effect(() => {
+    void items
+    visibleCount = PAGE_SIZE
+  })
+
   async function reload() {
     const all = await db.drawings.orderBy('createdAt').reverse().toArray()
     let nextPosition = Math.max(-1, ...all.map((drawing) => drawing.position ?? -1)) + 1
@@ -156,7 +169,8 @@
       theme = 'dark'
     }
     document.documentElement.dataset.theme = theme
-    requestPersistence()
+    const persisted = await requestPersistence()
+    if (!persisted) persistenceWarning = true
     try {
       await removeLegacyAnalysisData()
     } catch {
@@ -526,6 +540,13 @@
       else if (viewer) closeViewer()
       return
     }
+    if (viewer && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
+      e.preventDefault()
+      navigateViewer(e.key === 'ArrowLeft' ? -1 : 1)
+      return
+    }
     if (e.key !== 'Tab' || !viewerDialog) return
     const focusable = [...viewerDialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex="0"]')]
       .filter((element) => element.getClientRects().length > 0)
@@ -627,6 +648,99 @@
     if (selection && (selection.w < 0.02 || selection.h < 0.02)) selection = null
   }
 
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  async function renameDrawing(drawing: DrawingRecord) {
+    const name = prompt('New name:', drawing.name)?.trim()
+    if (!name || name === drawing.name) return
+    await db.drawings.update(drawing.id, { name })
+    drawings = drawings.map((d) => d.id === drawing.id ? { ...d, name } : d)
+  }
+
+  async function downloadCrop(blob: Blob, box: Rect | null, baseName: string) {
+    try {
+      let resultBlob: Blob
+      let fileName: string
+      if (box) {
+        const [x, y, w, h] = box
+        const bitmap = await createImageBitmap(blob, Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
+        const canvas = new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
+        canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
+        bitmap.close()
+        resultBlob = await canvas.convertToBlob({ type: 'image/png' })
+        fileName = `${baseName.replace(/\.[^.]+$/, '')}-crop.png`
+      } else {
+        resultBlob = blob
+        fileName = baseName
+      }
+      const url = URL.createObjectURL(resultBlob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      document.body.append(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch {
+      error = 'Could not export the image.'
+    }
+  }
+
+  function navigateViewer(offset: number) {
+    if (!viewerId) return
+    const index = sortedDrawings.findIndex((d) => d.id === viewerId)
+    const next = sortedDrawings[index + offset]
+    if (!next) return
+    openViewer({ key: next.id, drawing: next, box: null })
+  }
+
+  async function deleteSelectedDrawings() {
+    if (selectedDrawingIds.length === 0) return
+    if (!confirm(`Delete ${selectedDrawingIds.length} image${selectedDrawingIds.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    await deleteDrawings(selectedDrawingIds)
+    const deleted = new Set(selectedDrawingIds)
+    drawings = drawings.filter((d) => !deleted.has(d.id))
+    selectedDrawingIds = []
+    selectionMode = false
+    notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted.`
+  }
+
+  async function bulkAddTag() {
+    const label = bulkTagInput.trim()
+    if (!label || selectedDrawingIds.length === 0) return
+    const updates = selectedDrawingIds.map((id) => {
+      const drawing = byId.get(id)
+      if (!drawing) return null
+      const tag: Tag = { id: crypto.randomUUID(), label, box: null }
+      return { id, tags: [...drawing.tags, tag] }
+    }).filter((u): u is { id: string; tags: Tag[] } => u !== null)
+    await Promise.all(updates.map(({ id, tags }) => db.drawings.update(id, { tags })))
+    const tagMap = new Map(updates.map((u) => [u.id, u.tags]))
+    drawings = drawings.map((d) => tagMap.has(d.id) ? { ...d, tags: tagMap.get(d.id)! } : d)
+    bulkTagInput = ''
+    notice = `Tag "${label}" added to ${updates.length} image${updates.length === 1 ? '' : 's'}.`
+  }
+
+  function onFolderDragOver(event: DragEvent, folderId: string) {
+    if (!draggedDrawingId) return
+    event.preventDefault()
+    dragOverFolderId = folderId
+  }
+
+  async function onFolderDrop(event: DragEvent, folderId: string) {
+    event.preventDefault()
+    dragOverFolderId = null
+    const sourceId = draggedDrawingId
+    draggedDrawingId = null
+    if (!sourceId) return
+    const drawing = byId.get(sourceId)
+    if (drawing) await moveToFolder(drawing, folderId)
+  }
+
   const pct = (value: number, total: number) => `${(value / total) * 100}%`
 </script>
 
@@ -691,7 +805,7 @@
   <input
     bind:this={fileInput}
     type="file"
-    accept="image/png,image/jpeg,image/webp"
+    accept="image/png,image/jpeg,image/webp,image/avif"
     multiple
     hidden
     onchange={(e) => {
@@ -713,6 +827,9 @@
 </header>
 
 <p class="data-warning" role="note"><strong>Keep a copy of your drawings.</strong> Crop stores images in this browser only. Keep the original files and download a Backup regularly; clearing browser data or losing access to this device may erase your library.</p>
+{#if persistenceWarning}
+  <p class="data-warning" role="note">⚠ Your browser did not grant persistent storage. Your library may be cleared if the browser is low on disk space. Use <strong>Backup</strong> regularly to keep a safe copy.</p>
+{/if}
 
 <nav class="folder-list" aria-label="Folders">
   <details class="folder-menu">
@@ -723,10 +840,25 @@
         : drawings.length})
     </summary>
     <div class="folder-menu-content">
-      <button aria-pressed={!selectedFolderId} onclick={() => { selectedFolderId = ''; query = '' }}>All images ({drawings.length})</button>
+      <button
+        aria-pressed={!selectedFolderId}
+        class:folder-drag-over={dragOverFolderId === ''}
+        onclick={() => { selectedFolderId = ''; query = '' }}
+        ondragover={(event) => onFolderDragOver(event, '')}
+        ondragleave={() => { if (dragOverFolderId === '') dragOverFolderId = null }}
+        ondrop={(event) => onFolderDrop(event, '')}
+      >All images ({drawings.length})</button>
       {#each folders as folder (folder.id)}
         <div class="folder-entry">
-          <button class="folder-select" aria-pressed={selectedFolderId === folder.id} onclick={() => { selectedFolderId = folder.id; query = '' }}>
+          <button
+            class="folder-select"
+            class:folder-drag-over={dragOverFolderId === folder.id}
+            aria-pressed={selectedFolderId === folder.id}
+            onclick={() => { selectedFolderId = folder.id; query = '' }}
+            ondragover={(event) => onFolderDragOver(event, folder.id)}
+            ondragleave={() => { if (dragOverFolderId === folder.id) dragOverFolderId = null }}
+            ondrop={(event) => onFolderDrop(event, folder.id)}
+          >
             {folder.name} ({drawings.filter((drawing) => drawing.folderId === folder.id).length})
           </button>
           <button type="button" class="folder-action" onclick={() => renameFolder(folder)} aria-label="Rename {folder.name}">Rename</button>
@@ -836,11 +968,16 @@
             </select>
           </label>
           <button type="button" onclick={moveSelectedDrawings} disabled={selectedDrawingIds.length === 0}>Move selected</button>
+          <button type="button" class="danger" onclick={deleteSelectedDrawings} disabled={selectedDrawingIds.length === 0}>Delete selected</button>
           <button type="button" onclick={() => { selectionMode = false; selectedDrawingIds = [] }}>Cancel</button>
+          <form class="bulk-tag-form" onsubmit={(e) => { e.preventDefault(); bulkAddTag() }}>
+            <input type="text" placeholder="Tag selected images…" bind:value={bulkTagInput} autocomplete="off" aria-label="Tag for selected images" />
+            <button type="submit" disabled={!bulkTagInput.trim() || selectedDrawingIds.length === 0}>Tag selected</button>
+          </form>
         {/if}
       </div>
       <ul class="grid">
-        {#each items as item, index (item.key)}
+        {#each pagedItems as item, index (item.key)}
           <li>
             <button
               class="card"
@@ -886,6 +1023,9 @@
           </li>
         {/each}
       </ul>
+      {#if visibleCount < items.length}
+        <button type="button" class="load-more" onclick={() => (visibleCount += PAGE_SIZE)}>Load {Math.min(PAGE_SIZE, items.length - visibleCount)} more ({items.length - visibleCount} remaining)</button>
+      {/if}
     {/if}
   {/if}
   {/if}
@@ -994,7 +1134,13 @@
           {/if}
         </div>
         <button type="submit" disabled={!tagInput.trim()}>Add tag</button>
-        {#if selection}
+        {#if selection && viewer}
+          <button type="button" onclick={() => viewer && selection && downloadCrop(viewer.blob, [
+            Math.round(selection.x * viewer.width),
+            Math.round(selection.y * viewer.height),
+            Math.max(1, Math.round(selection.w * viewer.width)),
+            Math.max(1, Math.round(selection.h * viewer.height)),
+          ], viewer.name)}>Download crop</button>
           <button type="button" onclick={() => (selection = null)}>Cancel selection</button>
         {/if}
         {#if error}<p class="status error" role="alert">{error}</p>{/if}
@@ -1034,7 +1180,12 @@
                       />
                       {tag.box ? 'Area' : 'Whole image'}
                     </label>
-                    <button type="button" onclick={() => viewer && removeTag(viewer, tag.id)} aria-label="Remove {tag.label} tag">Remove</button>
+                    <span class="tag-entry-actions">
+                      {#if tag.box}
+                        <button type="button" onclick={() => viewer && downloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)}>Download</button>
+                      {/if}
+                      <button type="button" onclick={() => viewer && removeTag(viewer, tag.id)} aria-label="Remove {tag.label} tag">Remove</button>
+                    </span>
                   </div>
                 {/each}
               </section>
@@ -1044,8 +1195,10 @@
       {/if}
 
       <figcaption>
-        <span>{viewer.name} · {viewer.width}×{viewer.height}</span>
+        <span>{viewer.name} · {viewer.width}×{viewer.height} · {formatFileSize(viewer.blob.size)}</span>
         <span>
+          <button type="button" onclick={() => viewer && renameDrawing(viewer)}>Rename</button>
+          <button type="button" onclick={() => viewer && downloadCrop(viewer.blob, null, viewer.name)} title="Download original image">Download</button>
           <button
             type="button"
             onclick={() => (showTagOverlays = !showTagOverlays)}

@@ -1,7 +1,7 @@
 import { db, type DrawingRecord } from './db'
 
 const THUMB_SIZE = 480
-const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp']
+const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/avif']
 
 export function isAcceptedImage(file: File): boolean {
   return ACCEPTED.includes(file.type)
