@@ -1228,7 +1228,11 @@
                       {#if tag.box}
                         <button type="button" onclick={() => viewer && downloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)}>Download</button>
                       {/if}
-                      <button type="button" onclick={() => viewer && removeTag(viewer, tag.id)} aria-label="Remove {tag.label} tag">Remove</button>
+                      <button
+                        type="button"
+                        onclick={() => viewer && removeTag(viewer, tag.id)}
+                        aria-label={tag.box ? `Delete ${tag.label} crop from this image` : `Delete ${tag.label} tag from this image`}
+                      >{tag.box ? 'Delete crop' : 'Delete from image'}</button>
                     </span>
                   </div>
                 {/each}
