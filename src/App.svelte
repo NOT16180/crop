@@ -418,8 +418,20 @@
   }
 
   async function removeTag(drawing: DrawingRecord, tagId: string) {
-    visibleTagIds = visibleTagIds.filter((id) => id !== tagId)
-    await saveTags(drawing.id, drawing.tags.filter((t) => t.id !== tagId))
+    const tags = drawing.tags.filter((tag) => tag.id !== tagId)
+    if (tags.length === drawing.tags.length) return
+    const nextVisibleTagIds = (drawing.visibleTagIds ?? drawing.tags.map((tag) => tag.id))
+      .filter((id) => id !== tagId)
+    try {
+      await db.drawings.update(drawing.id, { tags, visibleTagIds: nextVisibleTagIds })
+      drawings = drawings.map((item) => item.id === drawing.id
+        ? { ...item, tags, visibleTagIds: nextVisibleTagIds }
+        : item)
+      if (viewerId === drawing.id) visibleTagIds = nextVisibleTagIds
+      error = ''
+    } catch {
+      error = 'Could not delete this tag. Check that browser storage is available, then try again.'
+    }
   }
 
   async function deleteTagGroup(label: string) {
