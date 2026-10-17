@@ -686,10 +686,15 @@ details[open] > summary::before {
     padding-left: 24px;
 }
 
-.rename-tag {
+.rename-tag,
+.delete-tag {
     margin: 0 0 4px 24px;
     padding: 2px 8px;
     font-size: 0.8rem;
+}
+
+.delete-tag {
+    color: var(--danger, #a22);
 }
 
 .tag-entry button {

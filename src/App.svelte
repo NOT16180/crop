@@ -422,6 +422,37 @@
     await saveTags(drawing.id, drawing.tags.filter((t) => t.id !== tagId))
   }
 
+  async function deleteTagGroup(label: string) {
+    const key = normalizeText(label)
+    const matches = drawings.filter((drawing) => drawing.tags.some((tag) => normalizeText(tag.label) === key))
+    if (!matches.length || !confirm(`Delete “${label}” from all ${matches.length} image${matches.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    const removedIds = new Set(matches.flatMap((drawing) => drawing.tags
+      .filter((tag) => normalizeText(tag.label) === key)
+      .map((tag) => tag.id)))
+    const updates = matches.map((drawing) => ({
+      ...drawing,
+      tags: drawing.tags.filter((tag) => normalizeText(tag.label) !== key),
+      visibleTagIds: (drawing.visibleTagIds ?? drawing.tags.map((tag) => tag.id))
+        .filter((id) => !removedIds.has(id)),
+    }))
+    try {
+      await db.transaction('rw', db.drawings, async () => {
+        for (const drawing of updates) {
+          await db.drawings.update(drawing.id, { tags: drawing.tags, visibleTagIds: drawing.visibleTagIds })
+        }
+      })
+      const updateById = new Map(updates.map((drawing) => [drawing.id, drawing]))
+      drawings = drawings.map((drawing) => updateById.get(drawing.id) ?? drawing)
+      const updatedViewer = viewerId ? updateById.get(viewerId) : undefined
+      if (updatedViewer) visibleTagIds = updatedViewer.visibleTagIds ?? []
+      selectedTagLabels = selectedTagLabels.filter((selected) => selected !== key)
+      notice = `Deleted “${label}” from ${matches.length} image${matches.length === 1 ? '' : 's'}.`
+      error = ''
+    } catch {
+      error = 'Could not delete the tag. Check that browser storage is available, then try again.'
+    }
+  }
+
   async function renameTagGroup(label: string) {
     const nextLabel = prompt(`Rename “${label}” everywhere in your library:`, label)?.trim()
     if (!nextLabel || nextLabel === label) return
@@ -1182,6 +1213,7 @@
                   <strong>{group.label}</strong><span>({group.tags.length})</span>
                 </label>
                 <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
+                <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>Delete everywhere</button>
                 {#each group.tags as tag (tag.id)}
                   <div class="tag-entry">
                     <label>
