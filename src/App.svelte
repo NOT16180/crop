@@ -1075,7 +1075,13 @@
                 style:width={pct(box[2], viewer.width)}
                 style:height={pct(box[3], viewer.height)}
               >
-                <em>{tag.label}</em>
+                <em>{tag.label}<button
+                  type="button"
+                  aria-label="Remove {tag.label} tag"
+                  title="Remove tag from image"
+                  onpointerdown={(event) => event.stopPropagation()}
+                  onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
+                >×</button></em>
                 <button type="button" class="resize-handle nw" aria-label="Resize {tag.label}, top-left corner" onpointerdown={(event) => startResize(event, tag, 'nw')}></button>
                 <button type="button" class="resize-handle ne" aria-label="Resize {tag.label}, top-right corner" onpointerdown={(event) => startResize(event, tag, 'ne')}></button>
                 <button type="button" class="resize-handle sw" aria-label="Resize {tag.label}, bottom-left corner" onpointerdown={(event) => startResize(event, tag, 'sw')}></button>
@@ -1085,7 +1091,13 @@
           {/each}
           <div class="whole-tags" aria-label="Whole image tags">
             {#each viewer.tags.filter((tag) => !tag.box && visibleTagIds.includes(tag.id)) as tag (tag.id)}
-              <span>{tag.label}</span>
+              <span>{tag.label}<button
+                type="button"
+                aria-label="Remove {tag.label} tag"
+                title="Remove tag from image"
+                onpointerdown={(event) => event.stopPropagation()}
+                onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
+              >×</button></span>
             {/each}
           </div>
         {/if}
