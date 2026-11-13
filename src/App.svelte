@@ -989,6 +989,9 @@
     {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} of {formatFileSize(storageUsage.quota)} used</span>{/if}
   </summary>
   <p>Crop stores images and tags in this browser on this device only; nothing is uploaded. Keep the original files and download a <strong>Backup</strong> regularly — clearing browser data or losing access to this device may erase your library.</p>
+  {#if !installed}
+    <p><strong>Install Crop</strong> from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>): the app then opens with no network at all, and an installed app is far less likely to have its storage cleared.</p>
+  {/if}
   {#if persistenceWarning}
     <p>⚠ Your browser did not grant persistent storage, so the library may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>): an installed app keeps working offline and its storage becomes persistent.</p>
   {/if}
@@ -1100,7 +1103,7 @@
       <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
       {#if !installed}
         <div class="install-hint">
-          <h3>Install Crop</h3>
+          <h3>Keep Crop on this device</h3>
           {#if installEvent}
             <button type="button" onclick={installApp}>Install Crop</button>
             <p>One click and Crop lives on your device like an app: it opens with no network, and its storage is protected from automatic cleanup.</p>
