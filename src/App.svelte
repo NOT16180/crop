@@ -56,6 +56,7 @@
   const PAGE_SIZE = 80
   let visibleCount = $state(PAGE_SIZE)
   let persistenceWarning = $state(false)
+  let storageUsage = $state<{ usage: number; quota: number } | null>(null)
   let bulkTagInput = $state('')
   let dragOverFolderId = $state<string | null>(null)
 
@@ -171,12 +172,16 @@
     document.documentElement.dataset.theme = theme
     const persisted = await requestPersistence()
     if (!persisted) persistenceWarning = true
+    // A browser only grants persistent storage to an app it trusts; installing
+    // Crop is what unlocks it, so ask again when that happens.
+    window.addEventListener('appinstalled', () => { void persistIfPossible() })
     try {
       await removeLegacyAnalysisData()
     } catch {
       // Cleanup is optional.
     }
     await reload()
+    await refreshStorageUsage()
   })
 
   function toggleTheme() {
@@ -203,6 +208,9 @@
       position: position++,
     })))
     await reload()
+    // Using the app is the signal browsers look for before granting persistence.
+    await persistIfPossible()
+    await refreshStorageUsage()
   }
 
   function startDrawingDrag(event: DragEvent, drawingId: string) {
@@ -345,6 +353,7 @@
       const { restoreBackup } = await import('./lib/backup')
       const result = await restoreBackup(file)
       await reload()
+      await refreshStorageUsage()
       notice = `Restored ${result.drawings} image${result.drawings === 1 ? '' : 's'} and ${result.folders} folder${result.folders === 1 ? '' : 's'}.`
       error = ''
     } catch (cause) {
@@ -528,6 +537,7 @@
     selectedDrawingIds = selectedDrawingIds.filter((id) => id !== drawing.id)
     closeViewer()
     notice = `“${drawing.name}” deleted.`
+    void refreshStorageUsage()
   }
 
   async function undoDelete() {
@@ -694,7 +704,47 @@
   function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  }
+
+  /** Report how much room the library takes, so a full browser store is not a surprise. */
+  async function refreshStorageUsage() {
+    try {
+      const estimate = await navigator.storage?.estimate?.()
+      if (estimate?.usage !== undefined && estimate.quota) {
+        storageUsage = { usage: estimate.usage, quota: estimate.quota }
+      }
+    } catch {
+      // Informational only: the app works without an estimate.
+    }
+  }
+
+  /** Ask again for persistent storage; browsers grant it once the app is used or installed. */
+  async function persistIfPossible() {
+    if (!persistenceWarning) return
+    if (await requestPersistence()) persistenceWarning = false
+  }
+
+  async function exportSheet() {
+    if (items.length === 0) return
+    error = ''
+    try {
+      const { downloadSheet, SHEET_CAPACITY: capacity } = await import('./lib/sheet')
+      const exported = await downloadSheet({
+        entries: items.slice(0, capacity).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
+        title: activeSearchQuery ? `#${activeSearchQuery}` : (folders.find((folder) => folder.id === selectedFolderId)?.name
+          ? `References · ${folders.find((folder) => folder.id === selectedFolderId)!.name}`
+          : 'My references'),
+        subtitle: `${items.length} image${items.length === 1 ? '' : 's'}${selectedTagLabels.length > 1 ? ` · tags: ${selectedTagLabels.join(', ')}` : ''}`,
+        origin: new URL(import.meta.env.BASE_URL, location.origin).href,
+        total: items.length,
+      })
+      notice = `Reference sheet exported with ${exported} image${exported === 1 ? '' : 's'}.`
+    } catch (cause) {
+      console.error('Could not export the reference sheet', cause)
+      error = 'Could not export the reference sheet.'
+    }
   }
 
   async function renameDrawing(drawing: DrawingRecord) {
@@ -750,6 +800,7 @@
     selectedDrawingIds = []
     selectionMode = false
     notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted.`
+    void refreshStorageUsage()
   }
 
   async function bulkAddTag() {
@@ -869,10 +920,16 @@
   />
 </header>
 
-<p class="data-warning" role="note"><strong>Keep a copy of your drawings.</strong> Crop stores images in this browser only. Keep the original files and download a Backup regularly; clearing browser data or losing access to this device may erase your library.</p>
-{#if persistenceWarning}
-  <p class="data-warning" role="note">⚠ Your browser did not grant persistent storage. Your library may be cleared if the browser is low on disk space. Use <strong>Backup</strong> regularly to keep a safe copy.</p>
-{/if}
+<details class="data-warning">
+  <summary>
+    <strong>Your library stays in this browser.</strong> Keep a backup of it.
+    {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} of {formatFileSize(storageUsage.quota)} used</span>{/if}
+  </summary>
+  <p>Crop stores images and tags in this browser on this device only; nothing is uploaded. Keep the original files and download a <strong>Backup</strong> regularly — clearing browser data or losing access to this device may erase your library.</p>
+  {#if persistenceWarning}
+    <p>⚠ Your browser did not grant persistent storage, so the library may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>): an installed app keeps working offline and its storage becomes persistent.</p>
+  {/if}
+</details>
 
 <nav class="folder-list" aria-label="Folders">
   <details class="folder-menu">
@@ -964,6 +1021,12 @@
       <h3>Backups and display</h3>
       <p>Your drawings are stored only in this browser. Download a <strong>Backup</strong> ZIP regularly and keep a copy somewhere safe, especially before clearing browser data or moving devices. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
 
+      <h3>Share a set of references</h3>
+      <p><strong>Export sheet</strong> turns the images currently shown into a single PNG sheet: tagged areas are cropped, tag names are written under each tile, and the address of Crop is printed at the bottom. It is a quick way to post a set of references or to show someone several details at once.</p>
+
+      <h3>Use Crop offline</h3>
+      <p>Crop can be installed as an app from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>). Installed, it opens without a network connection and your library is much less likely to be cleared when the device is low on space.</p>
+
       <h3>Support this app</h3>
       <p>If you enjoy using the app, you can <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support me on Ko-fi</a>. Donations are entirely optional.</p>
     </article>
@@ -993,6 +1056,7 @@
         {:else}
           <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
         {/if}
+        <button type="button" onclick={exportSheet} disabled={items.length === 0} title="Export the images shown as one PNG sheet you can share">Export sheet</button>
         <label>Sort
           <select bind:value={sortMode} aria-label="Sort images">
             <option value="manual">Manual order</option>

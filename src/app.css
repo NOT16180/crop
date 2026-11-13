@@ -199,6 +199,29 @@ button:disabled {
     font-size: 0.9rem;
 }
 
+.data-warning summary {
+    cursor: pointer;
+}
+
+.data-warning summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.data-warning p {
+    max-width: 90ch;
+    margin: 8px 0 0;
+    color: var(--muted);
+}
+
+.storage-usage {
+    float: right;
+    margin-left: 12px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
 .status.notice button:last-child {
     margin-left: auto;
 }

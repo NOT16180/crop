@@ -16,10 +16,15 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 export async function downloadBackup(): Promise<void> {
-  const [drawings, folders] = await Promise.all([
+  const [unsortedDrawings, folders] = await Promise.all([
     db.drawings.toArray(),
     db.folders.toArray(),
   ])
+  // Export in the library's manual order: IndexedDB returns records by primary
+  // key, so without this the archive would store an arbitrary UUID order and
+  // restoring it would scramble the library.
+  const drawings = unsortedDrawings.toSorted((a, b) => (a.position ?? 0) - (b.position ?? 0) ||
+    a.createdAt - b.createdAt)
   const manifest: BackupManifest = {
     format: 'crop-backup',
     version: 1,
@@ -85,7 +90,13 @@ export async function restoreBackup(file: File): Promise<{ drawings: number; fol
 
   const existingDrawings = await db.drawings.toArray()
   let position = existingDrawings.reduce((max, drawing) => Math.max(max, drawing.position ?? -1), -1) + 1
-  const drawingsToAdd: DrawingRecord[] = manifest.drawings.map((record) => {
+  // Keep the order recorded in the archive instead of the order records happen
+  // to appear in the manifest.
+  const orderedDrawings = manifest.drawings.toSorted((a, b) =>
+    (Number.isFinite(a.position) ? (a.position as number) : Number.MAX_SAFE_INTEGER) -
+    (Number.isFinite(b.position) ? (b.position as number) : Number.MAX_SAFE_INTEGER) ||
+    (Number.isFinite(a.createdAt) ? a.createdAt : 0) - (Number.isFinite(b.createdAt) ? b.createdAt : 0))
+  const drawingsToAdd: DrawingRecord[] = orderedDrawings.map((record) => {
     if (!record || typeof record.id !== 'string' || typeof record.name !== 'string' ||
         !Number.isFinite(record.width) || !Number.isFinite(record.height) ||
         !Array.isArray(record.tags)) {
