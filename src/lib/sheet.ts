@@ -27,15 +27,21 @@ const MAX_ROWS = 4
 /** Tile height as a share of tile width — close to 4:3, so cropped areas fit with little letterboxing. */
 const TILE_RATIO = 0.78
 const CAPTION_HEIGHT = 34
-const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+/** Typography and colours follow notgalerie.com: Inconsolata, black on white. */
+const FONT = '"Inconsolata", "Courier New", monospace'
 
-const BACKGROUND = '#0d0d10'
-const CELL = '#16161a'
-const TEXT = '#f2f2f4'
-const MUTED = '#9a9aa2'
+const BACKGROUND = '#ffffff'
+const CELL = '#ffffff'
+const TEXT = '#000000'
+const MUTED = 'rgba(0, 0, 0, 0.62)'
 
 /** Largest number of drawings that fit on one sheet. */
 export const SHEET_CAPACITY = COLUMNS * MAX_ROWS
+
+/** Site convention: chrome is uppercase. */
+function upper(text: string): string {
+  return text.toUpperCase()
+}
 
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text
@@ -98,6 +104,15 @@ export async function renderSheet(options: SheetOptions): Promise<Blob> {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('No canvas context')
 
+  // Canvas does not wait for webfonts; load Inconsolata first so the sheet is
+  // not rendered in a fallback face.
+  try {
+    await document.fonts.load(`600 34px ${FONT}`)
+    await document.fonts.load(`400 18px ${FONT}`)
+  } catch {
+    // Fallback face is acceptable.
+  }
+
   ctx.fillStyle = BACKGROUND
   ctx.fillRect(0, 0, SHEET_WIDTH, sheetHeight)
 
@@ -105,11 +120,11 @@ export async function renderSheet(options: SheetOptions): Promise<Blob> {
   ctx.fillStyle = TEXT
   ctx.font = `600 34px ${FONT}`
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText(fitText(ctx, options.title, SHEET_WIDTH - PADDING * 2), PADDING, PADDING + 42)
+  ctx.fillText(fitText(ctx, upper(options.title), SHEET_WIDTH - PADDING * 2), PADDING, PADDING + 42)
   if (options.subtitle) {
     ctx.fillStyle = MUTED
     ctx.font = `400 20px ${FONT}`
-    ctx.fillText(fitText(ctx, options.subtitle, SHEET_WIDTH - PADDING * 2), PADDING, PADDING + 74)
+    ctx.fillText(fitText(ctx, upper(options.subtitle), SHEET_WIDTH - PADDING * 2), PADDING, PADDING + 74)
   }
 
   const contentTop = PADDING + HEADER_HEIGHT
@@ -123,7 +138,10 @@ export async function renderSheet(options: SheetOptions): Promise<Blob> {
     const y = contentTop + row * (cellHeight + GAP)
 
     ctx.fillStyle = CELL
-    fillRoundedRect(ctx, x, y, cellWidth, cellHeight, 10)
+    fillRoundedRect(ctx, x, y, cellWidth, cellHeight, 0)
+    ctx.strokeStyle = TEXT
+    ctx.lineWidth = 1
+    ctx.strokeRect(x + 0.5, y + 0.5, cellWidth - 1, cellHeight - 1)
 
     try {
       const bitmap = await loadTileImage(entry, cellWidth - 16, areaHeight - 16)
@@ -154,9 +172,9 @@ export async function renderSheet(options: SheetOptions): Promise<Blob> {
   // Footer: the address that turns a shared sheet into a visit.
   ctx.fillStyle = MUTED
   ctx.font = `400 18px ${FONT}`
-  ctx.fillText(`Made with Crop — ${options.origin}`, PADDING, sheetHeight - PADDING - 18)
+  ctx.fillText(upper(`Made with Crop — ${options.origin}`), PADDING, sheetHeight - PADDING - 18)
   if (options.total > entries.length) {
-    const more = `+${options.total - entries.length} more in the library`
+    const more = upper(`+${options.total - entries.length} more in the library`)
     ctx.textAlign = 'right'
     ctx.fillText(more, SHEET_WIDTH - PADDING, sheetHeight - PADDING - 18)
     ctx.textAlign = 'left'

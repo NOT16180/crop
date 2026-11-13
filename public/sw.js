@@ -6,7 +6,7 @@
 // cache-first because their names change with every build.
 
 const CACHE = 'crop-shell-v1'
-const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.svg']
+const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.svg', './icon-192.png', './icon-512.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

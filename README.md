@@ -66,6 +66,12 @@ For a manual deployment, run `npm install`, `npm run build`, then `npx wrangler 
 
 The app uses browser storage only, so no Cloudflare database, Worker, or environment variables are required. Each visitor's library remains in that visitor's browser.
 
+## Design language
+
+Crop follows the same visual language as [notgalerie.com](https://notgalerie.com): **Inconsolata** monospace, black on white, 1px borders, square corners, and uppercase chrome. The font is served by the app itself (no Google Fonts request, and it keeps working offline). Buttons, section titles and labels are uppercase like the site; user text — file names, tags, help copy — keeps its own case so it stays readable.
+
+The app icon is a black outline square on a white background.
+
 ## Technology
 
 Vite, Svelte, TypeScript, and Dexie/IndexedDB, with a service worker that caches the app shell for offline use. Build with `npm run build`; check types and Svelte components with `npm run check`.

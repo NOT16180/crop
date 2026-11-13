@@ -165,9 +165,9 @@
 
   onMount(async () => {
     try {
-      theme = window.localStorage.getItem('drawing-library-theme') === 'light' ? 'light' : 'dark'
+      theme = window.localStorage.getItem('drawing-library-theme') === 'dark' ? 'dark' : 'light'
     } catch {
-      theme = 'dark'
+      theme = 'light'
     }
     document.documentElement.dataset.theme = theme
     const persisted = await requestPersistence()
