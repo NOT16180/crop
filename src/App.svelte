@@ -987,10 +987,18 @@
   <summary>
     <strong>Your library stays in this browser.</strong> Keep a backup of it.
     {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} of {formatFileSize(storageUsage.quota)} used</span>{/if}
+    {#if !installed}
+      <span class="install-line">
+        <strong>Install Crop:</strong> browser menu → <em>Install</em> or <em>Add to Home screen</em>. It then works offline.
+        {#if installEvent}
+          <button type="button" onclick={(event) => { event.preventDefault(); event.stopPropagation(); installApp() }}>Install Crop</button>
+        {/if}
+      </span>
+    {/if}
   </summary>
   <p>Crop stores images and tags in this browser on this device only; nothing is uploaded. Keep the original files and download a <strong>Backup</strong> regularly — clearing browser data or losing access to this device may erase your library.</p>
   {#if !installed}
-    <p><strong>Install Crop</strong> from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>): the app then opens with no network at all, and an installed app is far less likely to have its storage cleared.</p>
+    <p>Installing Crop keeps it working with no network and protects its storage from automatic cleanup.</p>
   {/if}
   {#if persistenceWarning}
     <p>⚠ Your browser did not grant persistent storage, so the library may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>): an installed app keeps working offline and its storage becomes persistent.</p>
@@ -1101,16 +1109,8 @@
     <section class="empty">
       <h2>Your library is empty</h2>
       <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
-      {#if !installed}
-        <div class="install-hint">
-          <h3>Keep Crop on this device</h3>
-          {#if installEvent}
-            <button type="button" onclick={installApp}>Install Crop</button>
-            <p>One click and Crop lives on your device like an app: it opens with no network, and its storage is protected from automatic cleanup.</p>
-          {:else}
-            <p>Open your browser menu and choose <strong>Install</strong> (or <strong>Add to Home screen</strong>). Installed, Crop opens with no network and your library is protected from automatic cleanup.</p>
-          {/if}
-        </div>
+      {#if !installed && installEvent}
+        <p class="empty-install"><button type="button" onclick={installApp}>Install Crop</button></p>
       {/if}
       <p>Your library stays in this browser on this device. Keep the original files and use Backup regularly; clearing browser data can erase your library.</p>
     </section>

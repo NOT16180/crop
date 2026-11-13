@@ -270,6 +270,20 @@ label {
     white-space: nowrap;
 }
 
+/* The install instruction belongs in the strip itself: visible without opening it. */
+.install-line {
+    display: block;
+    margin-top: 4px;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.install-line button {
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 0.8rem;
+}
+
 .status.notice button:last-child {
     margin-left: auto;
 }
@@ -417,21 +431,12 @@ main {
     color: var(--muted);
 }
 
-.install-hint {
-    margin: 18px 0 4px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    text-align: left;
+.empty-install {
+    margin: 14px 0 4px;
 }
 
-.install-hint h3 {
-    margin: 0 0 8px;
-    font-size: 0.95rem;
-}
-
-.install-hint p {
-    margin: 8px 0 0;
-    font-size: 0.85rem;
+.empty-install button {
+    padding: 8px 14px;
 }
 
 .empty {
