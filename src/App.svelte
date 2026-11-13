@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
-  import { importFiles, deleteDrawings, isAcceptedImage } from './lib/images'
+  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
   import Thumb from './lib/Thumb.svelte'
   import Crop from './lib/Crop.svelte'
@@ -52,11 +52,16 @@
   let viewerDialog: HTMLDivElement | undefined = $state()
   let returnFocusTarget: HTMLElement | null = null
   let deleteTimer: ReturnType<typeof setTimeout> | undefined
+  const repairedIds = new Set<string>()
 
   const PAGE_SIZE = 80
   let visibleCount = $state(PAGE_SIZE)
   let persistenceWarning = $state(false)
   let storageUsage = $state<{ usage: number; quota: number } | null>(null)
+  /** How many images the reference sheet should hold: a number, or every result. */
+  let sheetSize = $state('6')
+  let installEvent = $state<{ prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> } | null>(null)
+  let installed = $state(false)
   let bulkTagInput = $state('')
   let dragOverFolderId = $state<string | null>(null)
 
@@ -175,6 +180,16 @@
     // A browser only grants persistent storage to an app it trusts; installing
     // Crop is what unlocks it, so ask again when that happens.
     window.addEventListener('appinstalled', () => { void persistIfPossible() })
+    try {
+      installed = window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true
+    } catch {
+      installed = false
+    }
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault()
+      installEvent = event as unknown as typeof installEvent
+    })
     try {
       await removeLegacyAnalysisData()
     } catch {
@@ -393,8 +408,14 @@
   }
 
   async function saveTags(id: string, tags: Tag[]) {
-    await db.drawings.update(id, { tags, visibleTagIds })
-    drawings = drawings.map((d) => (d.id === id ? { ...d, tags, visibleTagIds } : d))
+    try {
+      await db.drawings.update(id, { tags, visibleTagIds })
+      drawings = drawings.map((d) => (d.id === id ? { ...d, tags, visibleTagIds } : d))
+      error = ''
+    } catch (cause) {
+      console.error('Could not save the tag', cause)
+      error = 'Could not save the tag. Check that browser storage is available, then try again.'
+    }
   }
 
   async function addTag() {
@@ -402,12 +423,12 @@
     const label = tagInput.trim()
     if (!drawing || !label) return
     const box: Rect | null = selection
-      ? [
+      ? clampBox([
           Math.round(selection.x * drawing.width),
           Math.round(selection.y * drawing.height),
           Math.max(1, Math.round(selection.w * drawing.width)),
           Math.max(1, Math.round(selection.h * drawing.height)),
-        ]
+        ], drawing.width, drawing.height)
       : null
     const tag: Tag = { id: crypto.randomUUID(), label, box }
     error = ''
@@ -623,7 +644,14 @@
 
   function startSelection(e: PointerEvent) {
     if (e.button !== 0 || resizing) return
-    imageBox!.setPointerCapture(e.pointerId)
+    // A pointer capture can be refused (pointer already gone, some touch
+    // stacks): losing it must not abort the selection, or tagging an area
+    // becomes impossible.
+    try {
+      imageBox!.setPointerCapture(e.pointerId)
+    } catch {
+      // Selection still works without the capture.
+    }
     dragStart = pointOnImage(e)
     selection = null
   }
@@ -647,7 +675,11 @@
     if (e.button !== 0 || !tag.box || !viewer || !imageBox) return
     e.preventDefault()
     e.stopPropagation()
-    imageBox.setPointerCapture(e.pointerId)
+    try {
+      imageBox.setPointerCapture(e.pointerId)
+    } catch {
+      // Resizing still works without the capture.
+    }
     resizing = {
       tagId: tag.id,
       corner,
@@ -726,13 +758,44 @@
     if (await requestPersistence()) persistenceWarning = false
   }
 
+  /** Run the browser's own install prompt when it offered one. */
+  async function installApp() {
+    const event = installEvent
+    if (!event) return
+    installEvent = null
+    await event.prompt()
+    const choice = await event.userChoice
+    installed = choice.outcome === 'accepted'
+    if (installed) {
+      notice = 'Crop installed. It now opens without a network.'
+      await persistIfPossible()
+    }
+  }
+
+  /**
+   * A thumbnail that cannot be displayed is rebuilt from the original file, so a
+   * library written by an unluckier build repairs itself silently.
+   */
+  async function repairDrawing(drawing: DrawingRecord) {
+    if (repairedIds.has(drawing.id)) return
+    repairedIds.add(drawing.id)
+    const fixed = await rebuildThumbnail(drawing)
+    if (fixed) {
+      drawings = drawings.map((item) => (item.id === fixed.id ? fixed : item))
+      notice = `Rebuilt the preview of “${fixed.name}”.`
+    } else {
+      repairedIds.delete(drawing.id)
+    }
+  }
+
   async function exportSheet() {
     if (items.length === 0) return
     error = ''
     try {
-      const { downloadSheet, SHEET_CAPACITY: capacity } = await import('./lib/sheet')
+      const { downloadSheet } = await import('./lib/sheet')
+      const wanted = sheetSize === 'all' ? items.length : Math.min(Number(sheetSize), items.length)
       const exported = await downloadSheet({
-        entries: items.slice(0, capacity).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
+        entries: items.slice(0, wanted).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
         title: activeSearchQuery ? `#${activeSearchQuery}` : (folders.find((folder) => folder.id === selectedFolderId)?.name
           ? `References · ${folders.find((folder) => folder.id === selectedFolderId)!.name}`
           : 'My references'),
@@ -1022,7 +1085,7 @@
       <p>Your drawings are stored only in this browser. Download a <strong>Backup</strong> ZIP regularly and keep a copy somewhere safe, especially before clearing browser data or moving devices. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
 
       <h3>Share a set of references</h3>
-      <p><strong>Export sheet</strong> turns the images currently shown into a single PNG sheet: tagged areas are cropped, tag names are written under each tile, and the address of Crop is printed at the bottom. It is a quick way to post a set of references or to show someone several details at once.</p>
+      <p><strong>Export sheet</strong> turns the images currently shown into a single PNG sheet: tagged areas are cropped, tag names are written under each tile, and the address of Crop is printed at the bottom. Choose how many images the sheet holds with the <strong>Sheet</strong> menu next to it — or <em>All images</em> to export every result.</p>
 
       <h3>Use Crop offline</h3>
       <p>Crop can be installed as an app from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>). Installed, it opens without a network connection and your library is much less likely to be cleared when the device is low on space.</p>
@@ -1035,6 +1098,17 @@
     <section class="empty">
       <h2>Your library is empty</h2>
       <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
+      {#if !installed}
+        <div class="install-hint">
+          <h3>Install Crop</h3>
+          {#if installEvent}
+            <button type="button" onclick={installApp}>Install Crop</button>
+            <p>One click and Crop lives on your device like an app: it opens with no network, and its storage is protected from automatic cleanup.</p>
+          {:else}
+            <p>Open your browser menu and choose <strong>Install</strong> (or <strong>Add to Home screen</strong>). Installed, Crop opens with no network and your library is protected from automatic cleanup.</p>
+          {/if}
+        </div>
+      {/if}
       <p>Your library stays in this browser on this device. Keep the original files and use Backup regularly; clearing browser data can erase your library.</p>
     </section>
   {:else}
@@ -1057,6 +1131,15 @@
           <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
         {/if}
         <button type="button" onclick={exportSheet} disabled={items.length === 0} title="Export the images shown as one PNG sheet you can share">Export sheet</button>
+        <label>Sheet
+          <select bind:value={sheetSize} aria-label="Number of images on the sheet">
+            <option value="6">6 images</option>
+            <option value="12">12 images</option>
+            <option value="24">24 images</option>
+            <option value="48">48 images</option>
+            <option value="all">All images ({items.length})</option>
+          </select>
+        </label>
         <label>Sort
           <select bind:value={sortMode} aria-label="Sort images">
             <option value="manual">Manual order</option>
@@ -1102,10 +1185,16 @@
               title={activeSearchQuery ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
             >
               {#if item.box}
-                <Crop blob={item.drawing.blob} box={item.box} alt={item.drawing.name} />
+                <Crop
+                  blob={item.drawing.blob}
+                  box={item.box}
+                  width={item.drawing.width}
+                  height={item.drawing.height}
+                  alt={item.drawing.name}
+                />
                 {#if item.label}<span class="badge">{item.label}</span>{/if}
               {:else}
-                <Thumb blob={item.drawing.thumb} alt={item.drawing.name} />
+                <Thumb blob={item.drawing.thumb} alt={item.drawing.name} onfail={() => repairDrawing(item.drawing)} />
               {/if}
             </button>
             <div class="drawing-meta">
@@ -1182,7 +1271,7 @@
                 style:width={pct(box[2], viewer.width)}
                 style:height={pct(box[3], viewer.height)}
               >
-                <em>{tag.label}<button
+                <em><span class="tag-label">{tag.label}</span><button
                   type="button"
                   aria-label="Remove {tag.label} tag"
                   title="Remove tag from image"
@@ -1198,7 +1287,7 @@
           {/each}
           <div class="whole-tags" aria-label="Whole image tags">
             {#each viewer.tags.filter((tag) => !tag.box && visibleTagIds.includes(tag.id)) as tag (tag.id)}
-              <span>{tag.label}<button
+              <span><span class="tag-label">{tag.label}</span><button
                 type="button"
                 aria-label="Remove {tag.label} tag"
                 title="Remove tag from image"

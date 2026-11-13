@@ -22,7 +22,7 @@ Open the address shown in the terminal (usually http://localhost:5173).
 - Choose which tags appear on a drawing from its **Tags** menu. Tags with the same name are grouped and can be toggled together.
 - Search for a tag or choose one from the **Tags** menu to find matching drawings and regions.
 - Download a local ZIP archive of drawings, folders, and tags with **Backup**. **Restore** merges an archive into the current library. The archive is not uploaded or synced.
-- Export the images currently shown as a single PNG sheet with **Export sheet**: tagged areas are cropped, tag names are written under each tile, and the app address is printed at the bottom.
+- Export the images currently shown as a single PNG sheet with **Export sheet**: tagged areas are cropped, tag names are written under each tile, and the app address is printed at the bottom. Pick how many images the sheet holds with the **Sheet** menu, or *All images* for every result.
 - Install Crop from the browser menu (*Install*, or *Add to Home screen*) to keep it working with no network: the app shell is cached, and installing is what makes browser storage persistent.
 - Undo a drawing deletion for a few seconds.
 - Tell duplicate filenames apart by their import date and a short ID.

@@ -21,12 +21,18 @@ const PADDING = 40
 const HEADER_HEIGHT = 150
 const FOOTER_HEIGHT = 90
 const GAP = 24
-const COLUMNS = 2
-/** Upper bound on tile rows; a sheet shrinks to the number of images it holds. */
-const MAX_ROWS = 4
+/** Tiles per row: a handful reads better in two columns, a large set needs more. */
+function columnsFor(count: number): number {
+  if (count <= 8) return 2
+  if (count <= 24) return 3
+  return 4
+}
+
 /** Tile height as a share of tile width — close to 4:3, so cropped areas fit with little letterboxing. */
 const TILE_RATIO = 0.78
 const CAPTION_HEIGHT = 34
+/** Browsers refuse very large canvases; a sheet stops here and reports the remainder. */
+const MAX_SHEET_HEIGHT = 15000
 /** Typography and colours follow notgalerie.com: Inconsolata, black on white. */
 const FONT = '"Inconsolata", "Courier New", monospace'
 
@@ -35,8 +41,8 @@ const CELL = '#ffffff'
 const TEXT = '#000000'
 const MUTED = 'rgba(0, 0, 0, 0.62)'
 
-/** Largest number of drawings that fit on one sheet. */
-export const SHEET_CAPACITY = COLUMNS * MAX_ROWS
+/** Largest number of tiles a sheet can hold before the canvas gets too tall. */
+export const SHEET_CAPACITY = 200
 
 /** Site convention: chrome is uppercase. */
 function upper(text: string): string {
@@ -87,16 +93,25 @@ async function loadTileImage(entry: SheetEntry, areaWidth: number, areaHeight: n
 
 /**
  * Draw a shareable reference sheet and return it as a PNG blob.
- * Two columns of tiles, 1000px wide, as tall as the images need.
+ * Two to four columns of tiles, 1000px wide, as tall as the images need.
  */
 export async function renderSheet(options: SheetOptions): Promise<Blob> {
-  const entries = options.entries.slice(0, SHEET_CAPACITY)
-  const rows = Math.min(MAX_ROWS, Math.max(1, Math.ceil(entries.length / COLUMNS)))
-  const cellWidth = (SHEET_WIDTH - PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS
+  const columns = columnsFor(options.entries.length)
+  const cellWidth = (SHEET_WIDTH - PADDING * 2 - GAP * (columns - 1)) / columns
   const cellHeight = Math.round(cellWidth * TILE_RATIO)
   // The sheet grows with its content, so one tagged detail does not end up
   // stretched across a whole poster-sized page.
-  const sheetHeight = PADDING + HEADER_HEIGHT + rows * cellHeight + (rows - 1) * GAP + FOOTER_HEIGHT + PADDING
+  const rowsFor = (count: number) => Math.max(1, Math.ceil(count / columns))
+  const heightFor = (count: number) =>
+    PADDING + HEADER_HEIGHT + rowsFor(count) * cellHeight + (rowsFor(count) - 1) * GAP + FOOTER_HEIGHT + PADDING
+  // No fixed limit on how many images a sheet may hold; the only ceiling is what
+  // a canvas can render, and the sheet says so when it hits it.
+  let entries = options.entries
+  while (entries.length > columns && heightFor(entries.length) > MAX_SHEET_HEIGHT) {
+    entries = entries.slice(0, entries.length - columns)
+  }
+  const rows = rowsFor(entries.length)
+  const sheetHeight = heightFor(entries.length)
 
   const canvas = document.createElement('canvas')
   canvas.width = SHEET_WIDTH
@@ -132,8 +147,8 @@ export async function renderSheet(options: SheetOptions): Promise<Blob> {
 
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]
-    const column = index % COLUMNS
-    const row = Math.floor(index / COLUMNS)
+    const column = index % columns
+    const row = Math.floor(index / columns)
     const x = PADDING + column * (cellWidth + GAP)
     const y = contentTop + row * (cellHeight + GAP)
 

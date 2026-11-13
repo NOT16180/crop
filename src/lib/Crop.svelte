@@ -17,18 +17,29 @@
 </script>
 
 <script lang="ts">
+  import { clampBox } from './images'
   import type { Rect } from './db'
 
-  let { blob, box, size = 360, alt = '' }: { blob: Blob; box: Rect; size?: number; alt?: string } = $props()
+  let { blob, box, size = 360, alt = '', width = 0, height = 0 }: {
+    blob: Blob
+    box: Rect
+    size?: number
+    alt?: string
+    width?: number
+    height?: number
+  } = $props()
 
   let canvas: HTMLCanvasElement
 
   $effect(() => {
     let cancelled = false
-    const x = Math.max(0, Math.round(box[0]))
-    const y = Math.max(0, Math.round(box[1]))
-    const w = Math.max(1, Math.round(box[2]))
-    const h = Math.max(1, Math.round(box[3]))
+    // A drag can land a fraction outside the picture; clamping here keeps the
+    // crop decodable instead of leaving an empty tile.
+    const safe = width > 0 && height > 0 ? clampBox(box, width, height) : box
+    const x = Math.max(0, Math.round(safe[0]))
+    const y = Math.max(0, Math.round(safe[1]))
+    const w = Math.max(1, Math.round(safe[2]))
+    const h = Math.max(1, Math.round(safe[3]))
     const scale = size / Math.max(w, h)
     const outW = Math.max(1, Math.round(w * scale))
     const outH = Math.max(1, Math.round(h * scale))
@@ -39,6 +50,7 @@
         resizeQuality: 'high',
       }),
     )
+      .catch(() => createImageBitmap(blob))
       .then((bitmap) => {
         if (cancelled) {
           bitmap.close()
@@ -46,10 +58,12 @@
         }
         canvas.width = outW
         canvas.height = outH
-        canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+        canvas.getContext('2d')?.drawImage(bitmap, 0, 0, outW, outH)
         bitmap.close()
       })
-      .catch(() => {})
+      .catch((cause) => {
+        if (!cancelled) console.warn('Could not display this crop', cause)
+      })
     return () => {
       cancelled = true
     }

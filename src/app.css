@@ -407,10 +407,31 @@ main {
     position: absolute;
     left: 6px;
     bottom: 6px;
+    max-width: calc(100% - 12px);
+    overflow: hidden;
     padding: 1px 6px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     background: #000a;
     color: var(--muted);
+}
+
+.install-hint {
+    margin: 18px 0 4px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    text-align: left;
+}
+
+.install-hint h3 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+}
+
+.install-hint p {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
 }
 
 .empty {
@@ -546,14 +567,25 @@ main {
     position: absolute;
     left: 0;
     top: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    /* Never wider than the area it labels: the tag fits the square. */
+    max-width: 100%;
     padding: 0 4px;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     line-height: 1.3;
     font-style: normal;
     background: #000b;
     color: #fff;
     pointer-events: auto;
     white-space: nowrap;
+}
+
+.tag-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tag-box em button,
@@ -581,10 +613,14 @@ main {
 }
 
 .whole-tags span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
     padding: 1px 5px;
     background: #000b;
     color: #fff;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     line-height: 1.4;
     pointer-events: auto;
 }
