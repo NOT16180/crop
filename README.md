@@ -34,6 +34,10 @@ Drawings and tags are stored in IndexedDB in your browser. The selected theme is
 
 Crop asks the browser for persistent storage when it starts and again after the first import, and shows how much room the library takes. Browsers grant persistence to apps they trust, so installing Crop is the reliable way to keep a library out of reach of automatic cleanup.
 
+## Feedback
+
+Use the **Feedback** link in Crop or [open the feedback form](https://github.com/NOT16180/crop/issues/new?template=feedback.yml) to share what worked or what could be better. Feedback is submitted as a public GitHub issue; do not include personal information or private artwork.
+
 ## Promoting the first version
 
 You can describe Crop as an early version or beta and invite people who draw to try it. For example:

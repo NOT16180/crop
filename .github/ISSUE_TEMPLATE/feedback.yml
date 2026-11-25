@@ -1,0 +1,35 @@
+name: Share feedback
+description: Tell me what worked or what could be better in Crop.
+title: "Feedback: "
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Feedback submitted here is public. Please do not include personal information
+        or private artwork.
+  - type: textarea
+    id: trying-to-do
+    attributes:
+      label: What were you trying to do?
+      description: A short description of the task or situation helps put your feedback in context.
+      placeholder: I was trying to...
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: How did it go?
+      description: What felt clear, confusing, slow, or missing?
+      placeholder: I expected... but...
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What would make the experience better?
+      description: Suggestions are welcome; this field is optional.
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device (optional)
+      placeholder: Firefox on Windows, Safari on iPhone, etc.

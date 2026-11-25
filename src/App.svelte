@@ -55,6 +55,7 @@
   const repairedIds = new Set<string>()
 
   const PAGE_SIZE = 80
+  const FEEDBACK_URL = 'https://github.com/NOT16180/crop/issues/new?template=feedback.yml'
   let visibleCount = $state(PAGE_SIZE)
   let persistenceWarning = $state(false)
   let storageUsage = $state<{ usage: number; quota: number } | null>(null)
@@ -1046,6 +1047,7 @@
     title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => (showHelp = !showHelp)}>{showHelp ? 'Back to library' : 'How to use'}</button>
+  <a class="support-link" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">Feedback</a>
   <button onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add</button>
   <button type="button" onclick={backupLibrary} title="Download a ZIP copy of your library to this device">Backup</button>
   <button type="button" onclick={() => backupInput.click()} title="Merge a Crop backup into this library">Restore</button>
@@ -1191,6 +1193,9 @@
 
       <h3>Use Crop offline</h3>
       <p>Crop can be installed as an app from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>). Installed, it opens without a network connection and your library is much less likely to be cleared when the device is low on space.</p>
+
+      <h3>Send feedback</h3>
+      <p>Use the <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">feedback form on GitHub</a> to share what worked or what could be better. Submissions are public GitHub issues, so do not include private artwork or personal information.</p>
 
       <h3>Support this app</h3>
       <p>If you enjoy using the app, you can <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support me on Ko-fi</a>. Donations are entirely optional.</p>
