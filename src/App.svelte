@@ -26,7 +26,7 @@
   let arrangingDrawings = $state(false)
   let selectedDrawingIds = $state<string[]>([])
   let bulkFolderId = $state('__unfiled__')
-  let pendingDelete = $state<DrawingRecord | null>(null)
+  let pendingDeletedDrawings = $state<DrawingRecord[]>([])
   let notice = $state('')
   let draggedDrawingId = $state<string | null>(null)
   let suppressCardClick = false
@@ -64,6 +64,8 @@
   let installed = $state(false)
   let bulkTagInput = $state('')
   let dragOverFolderId = $state<string | null>(null)
+  let activeSearchSuggestion = $state(-1)
+  let activeTagSuggestion = $state(-1)
 
 
   const byId = $derived(new Map(drawings.map((d) => [d.id, d])))
@@ -143,9 +145,44 @@
       .slice(0, 6)
   })
 
+  function onSuggestionKeydown(event: KeyboardEvent, kind: 'search' | 'tag') {
+    const suggestions = kind === 'search' ? searchSuggestions : tagSuggestions
+    const active = kind === 'search' ? activeSearchSuggestion : activeTagSuggestion
+    if (!suggestions.length) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const next = event.key === 'ArrowDown'
+        ? (active + 1) % suggestions.length
+        : (active <= 0 ? suggestions.length - 1 : active - 1)
+      if (kind === 'search') activeSearchSuggestion = next
+      else activeTagSuggestion = next
+    } else if (event.key === 'Enter' && active >= 0) {
+      event.preventDefault()
+      if (kind === 'search') query = suggestions[active].label
+      else tagInput = suggestions[active].label
+      if (kind === 'search') activeSearchSuggestion = -1
+      else activeTagSuggestion = -1
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      if (kind === 'search') activeSearchSuggestion = -1
+      else activeTagSuggestion = -1
+    }
+  }
+
   $effect(() => {
     void items
     visibleCount = PAGE_SIZE
+  })
+
+  $effect(() => {
+    const isOpen = Boolean(viewer)
+    const app = document.getElementById('app')
+    const background = [...(app?.children ?? [])].filter((element) => !element.classList.contains('viewer'))
+    for (const element of background) (element as HTMLElement).inert = isOpen
+    return () => {
+      for (const element of background) (element as HTMLElement).inert = false
+    }
   })
 
   async function reload() {
@@ -213,19 +250,32 @@
     error = ''
     const valid = files.filter(isAcceptedImage)
     if (valid.length === 0) {
-      error = 'Unsupported file format. Use PNG, JPG, or WebP.'
+      error = 'Unsupported file format. Use PNG, JPG, WebP, or AVIF.'
       return
     }
-    const imported = await importFiles(valid)
-    let position = drawings.reduce((max, drawing) => Math.max(max, drawing.position ?? -1), -1) + 1
-    await Promise.all(imported.map((drawing) => db.drawings.update(drawing.id, {
-      ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
-      position: position++,
-    })))
-    await reload()
-    // Using the app is the signal browsers look for before granting persistence.
-    await persistIfPossible()
-    await refreshStorageUsage()
+    try {
+      const result = await importFiles(valid)
+      let position = drawings.reduce((max, drawing) => Math.max(max, drawing.position ?? -1), -1) + 1
+      await Promise.all(result.created.map((drawing) => db.drawings.update(drawing.id, {
+        ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
+        position: position++,
+      })))
+      await reload()
+      if (result.failures.length) {
+        const details = result.failures.slice(0, 3).map((failure) => `${failure.name}: ${failure.reason}`).join(' · ')
+        const extra = result.failures.length > 3 ? ` · and ${result.failures.length - 3} more` : ''
+        error = `Imported ${result.created.length} of ${valid.length} images. ${details}${extra}`
+      } else if (result.created.length) {
+        notice = `Imported ${result.created.length} image${result.created.length === 1 ? '' : 's'}.`
+      }
+      // Use is the signal browsers look for before granting persistence.
+      if (result.created.length) await persistIfPossible()
+      await refreshStorageUsage()
+    } catch {
+      error = 'Could not save imported images. Check available browser storage and try again.'
+      try { await reload() } catch { /* Keep the import error visible. */ }
+      await refreshStorageUsage()
+    }
   }
 
   function startDrawingDrag(event: DragEvent, drawingId: string) {
@@ -549,9 +599,9 @@
     if (!confirm(`Delete “${drawing.name}”?`)) return
     await deleteDrawings([drawing.id])
     if (deleteTimer) clearTimeout(deleteTimer)
-    pendingDelete = drawing
+    pendingDeletedDrawings = [...pendingDeletedDrawings, drawing]
     deleteTimer = window.setTimeout(() => {
-      pendingDelete = null
+      pendingDeletedDrawings = []
       deleteTimer = undefined
     }, 8000)
     drawings = drawings.filter((item) => item.id !== drawing.id)
@@ -562,17 +612,18 @@
   }
 
   async function undoDelete() {
-    if (!pendingDelete) return
-    const drawingToRestore = pendingDelete
+    if (!pendingDeletedDrawings.length) return
+    const drawingsToRestore = pendingDeletedDrawings
     if (deleteTimer) clearTimeout(deleteTimer)
     deleteTimer = undefined
-    const restored = drawingToRestore.folderId && !folders.some((folder) => folder.id === drawingToRestore.folderId)
-      ? { ...drawingToRestore, folderId: undefined }
-      : drawingToRestore
-    await db.drawings.add(restored)
-    pendingDelete = null
+    const restored = drawingsToRestore.map((drawing) => drawing.folderId && !folders.some((folder) => folder.id === drawing.folderId)
+      ? { ...drawing, folderId: undefined }
+      : drawing)
+    await db.drawings.bulkAdd(restored)
+    pendingDeletedDrawings = []
     await reload()
-    notice = 'Image restored.'
+    notice = `${restored.length} image${restored.length === 1 ? '' : 's'} restored.`
+    void refreshStorageUsage()
   }
 
   function openViewer(item: Item) {
@@ -824,10 +875,24 @@
       if (box) {
         const [x, y, w, h] = box
         const bitmap = await createImageBitmap(blob, Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
-        const canvas = new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
-        canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
-        bitmap.close()
-        resultBlob = await canvas.convertToBlob({ type: 'image/png' })
+        const cropWidth = Math.max(1, Math.round(w))
+        const cropHeight = Math.max(1, Math.round(h))
+        const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
+          ? new OffscreenCanvas(cropWidth, cropHeight)
+          : Object.assign(document.createElement('canvas'), { width: cropWidth, height: cropHeight })
+        try {
+          const context = canvas.getContext('2d')
+          if (!context) throw new Error('Canvas is unavailable')
+          context.drawImage(bitmap, 0, 0)
+          resultBlob = typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
+            ? await canvas.convertToBlob({ type: 'image/png' })
+            : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
+                (result) => result ? resolve(result) : reject(new Error('Could not export crop')),
+                'image/png',
+              ))
+        } finally {
+          bitmap.close()
+        }
         fileName = `${baseName.replace(/\.[^.]+$/, '')}-crop.png`
       } else {
         resultBlob = blob
@@ -848,21 +913,34 @@
 
   function navigateViewer(offset: number) {
     if (!viewerId) return
-    const index = sortedDrawings.findIndex((d) => d.id === viewerId)
-    const next = sortedDrawings[index + offset]
-    if (!next) return
-    openViewer({ key: next.id, drawing: next, box: null })
+    const seen = new Set<string>()
+    const navigationItems = items.filter((item) => {
+      if (seen.has(item.drawing.id)) return false
+      seen.add(item.drawing.id)
+      return true
+    })
+    const index = navigationItems.findIndex((item) => item.drawing.id === viewerId)
+    const next = navigationItems[index + offset]
+    if (index < 0 || !next) return
+    openViewer(next)
   }
 
   async function deleteSelectedDrawings() {
     if (selectedDrawingIds.length === 0) return
-    if (!confirm(`Delete ${selectedDrawingIds.length} image${selectedDrawingIds.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    if (!confirm(`Delete ${selectedDrawingIds.length} image${selectedDrawingIds.length === 1 ? '' : 's'}? You can undo this for 8 seconds.`)) return
     await deleteDrawings(selectedDrawingIds)
     const deleted = new Set(selectedDrawingIds)
+    const removed = drawings.filter((drawing) => deleted.has(drawing.id))
+    pendingDeletedDrawings = [...pendingDeletedDrawings, ...removed]
+    if (deleteTimer) clearTimeout(deleteTimer)
+    deleteTimer = window.setTimeout(() => {
+      pendingDeletedDrawings = []
+      deleteTimer = undefined
+    }, 8000)
     drawings = drawings.filter((d) => !deleted.has(d.id))
     selectedDrawingIds = []
     selectionMode = false
-    notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted.`
+    notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted. Undo is available for 8 seconds.`
     void refreshStorageUsage()
   }
 
@@ -873,11 +951,16 @@
       const drawing = byId.get(id)
       if (!drawing) return null
       const tag: Tag = { id: crypto.randomUUID(), label, box: null }
-      return { id, tags: [...drawing.tags, tag] }
-    }).filter((u): u is { id: string; tags: Tag[] } => u !== null)
-    await Promise.all(updates.map(({ id, tags }) => db.drawings.update(id, { tags })))
+      const tags = [...drawing.tags, tag]
+      const visibleTagIds = [...new Set([...(drawing.visibleTagIds ?? drawing.tags.map((item) => item.id)), tag.id])]
+      return { id, tags, visibleTagIds }
+    }).filter((u): u is { id: string; tags: Tag[]; visibleTagIds: string[] } => u !== null)
+    await Promise.all(updates.map(({ id, tags, visibleTagIds }) => db.drawings.update(id, { tags, visibleTagIds })))
     const tagMap = new Map(updates.map((u) => [u.id, u.tags]))
-    drawings = drawings.map((d) => tagMap.has(d.id) ? { ...d, tags: tagMap.get(d.id)! } : d)
+    const visibleMap = new Map(updates.map((u) => [u.id, u.visibleTagIds]))
+    drawings = drawings.map((d) => tagMap.has(d.id)
+      ? { ...d, tags: tagMap.get(d.id)!, visibleTagIds: visibleMap.get(d.id) }
+      : d)
     bulkTagInput = ''
     notice = `Tag "${label}" added to ${updates.length} image${updates.length === 1 ? '' : 's'}.`
   }
@@ -931,15 +1014,23 @@
         placeholder="Search images by tag (e.g. face, hands, landscape)…"
         bind:value={query}
         aria-label="Search tags"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-haspopup="listbox"
+        aria-controls="search-suggestions"
+        aria-expanded={searchSuggestions.length > 0}
+        aria-activedescendant={activeSearchSuggestion >= 0 && searchSuggestions.length > 0 ? `search-suggestion-${activeSearchSuggestion}` : undefined}
+        onkeydown={(event) => onSuggestionKeydown(event, 'search')}
+        oninput={() => (activeSearchSuggestion = -1)}
         autocomplete="off"
       />
       {#if searching}
         <button type="button" class="clear-search" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">×</button>
       {/if}
       {#if searchSuggestions.length > 0}
-        <div class="autocomplete-list" role="listbox" aria-label="Tag suggestions">
-          {#each searchSuggestions as entry (entry.label)}
-            <button type="button" role="option" aria-selected="false" onclick={() => (query = entry.label)}>
+        <div class="autocomplete-list" id="search-suggestions" role="listbox" aria-label="Tag suggestions">
+          {#each searchSuggestions as entry, index (entry.label)}
+            <button type="button" id="search-suggestion-{index}" role="option" aria-selected={activeSearchSuggestion === index} class:active={activeSearchSuggestion === index} onclick={() => { query = entry.label; activeSearchSuggestion = -1 }}>
               {entry.label}<span>{entry.count}</span>
             </button>
           {/each}
@@ -1066,11 +1157,11 @@
   </nav>
 {/if}
 
-{#if error}<p class="status error">{error}</p>{/if}
+{#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
 {#if notice}
   <p class="status notice">
     {notice}
-    {#if pendingDelete}<button type="button" onclick={undoDelete}>Undo</button>{/if}
+    {#if pendingDeletedDrawings.length}<button type="button" onclick={undoDelete}>Undo deletion ({pendingDeletedDrawings.length})</button>{/if}
     <button type="button" onclick={() => (notice = '')} aria-label="Dismiss notification">×</button>
   </p>
 {/if}
@@ -1081,7 +1172,7 @@
       <h2>How to use the image library</h2>
       <p>Crop is a personal library for your drawings. Add tags to whole images or specific areas, then search those tags to find the drawing or detail you need. Your library stays in this browser on this device; Crop does not upload your images.</p>
 
-      <p>Add PNG, JPG, or WebP images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot.</p>
+      <p>Add PNG, JPG, WebP, or AVIF images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot. Files the browser cannot decode are reported individually.</p>
 
       <h3>Find images with tags</h3>
       <p>Type a tag in the search box to find matching images. Select a tag from the Tags menu to get the same results, including any tagged area. Select multiple tags to filter images that have all or any of those tags.</p>
@@ -1332,12 +1423,20 @@
             placeholder={selection ? 'Tag the selected area' : 'Tag the whole image (or drag to select an area)'}
             bind:value={tagInput}
             aria-label="New tag"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-controls="tag-suggestions"
+            aria-expanded={tagSuggestions.length > 0}
+            aria-activedescendant={activeTagSuggestion >= 0 && tagSuggestions.length > 0 ? `tag-suggestion-${activeTagSuggestion}` : undefined}
+            onkeydown={(event) => onSuggestionKeydown(event, 'tag')}
+            oninput={() => (activeTagSuggestion = -1)}
             autocomplete="off"
           />
           {#if tagSuggestions.length > 0}
-            <div class="autocomplete-list" role="listbox" aria-label="Existing tags">
-              {#each tagSuggestions as entry (entry.label)}
-                <button type="button" role="option" aria-selected="false" onclick={() => (tagInput = entry.label)}>
+            <div class="autocomplete-list" id="tag-suggestions" role="listbox" aria-label="Existing tags">
+              {#each tagSuggestions as entry, index (entry.label)}
+                <button type="button" id="tag-suggestion-{index}" role="option" aria-selected={activeTagSuggestion === index} class:active={activeTagSuggestion === index} onclick={() => { tagInput = entry.label; activeTagSuggestion = -1 }}>
                   {entry.label}<span>{entry.count}</span>
                 </button>
               {/each}
@@ -1354,7 +1453,7 @@
           ], viewer.name)}>Download crop</button>
           <button type="button" onclick={() => (selection = null)}>Cancel selection</button>
         {/if}
-        {#if error}<p class="status error" role="alert">{error}</p>{/if}
+        {#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
       </form>
 
       <label class="drawing-folder">Folder

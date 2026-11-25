@@ -1,5 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { db, type DrawingRecord, type FolderRecord } from './db'
+import { isValidBackupDrawing } from './backup-validation'
 
 interface BackupManifest {
   format: 'crop-backup'
@@ -10,6 +11,11 @@ interface BackupManifest {
     thumbType: string
   })[]
 }
+
+const MAX_ARCHIVE_BYTES = 600 * 1024 * 1024
+const MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024
+const MAX_ARCHIVE_ENTRIES = 10_000
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
@@ -55,14 +61,29 @@ export async function downloadBackup(): Promise<void> {
 }
 
 export async function restoreBackup(file: File): Promise<{ drawings: number; folders: number }> {
+  if (file.size > MAX_ARCHIVE_BYTES) {
+    throw new Error('This backup is too large to restore in the browser (maximum 600 MB).')
+  }
   let manifest: BackupManifest
   let files: ReturnType<typeof unzipSync>
+  let totalUncompressed = 0
+  let entryCount = 0
   try {
-    files = unzipSync(new Uint8Array(await file.arrayBuffer()))
+    files = unzipSync(new Uint8Array(await file.arrayBuffer()), {
+      filter: (entry) => {
+        entryCount++
+        totalUncompressed += entry.originalSize
+        if (entryCount > MAX_ARCHIVE_ENTRIES || entry.originalSize > MAX_ENTRY_BYTES || totalUncompressed > MAX_UNCOMPRESSED_BYTES) {
+          throw new Error('This backup expands beyond the browser safety limit (512 MB total).')
+        }
+        return true
+      },
+    })
     const manifestBytes = files['manifest.json']
     if (!manifestBytes) throw new Error('Missing manifest')
     manifest = JSON.parse(strFromU8(manifestBytes)) as BackupManifest
-  } catch {
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.includes('browser safety limit')) throw cause
     throw new Error('This file is not a valid Crop backup.')
   }
   if (manifest.format !== 'crop-backup' || manifest.version !== 1 ||
@@ -96,10 +117,9 @@ export async function restoreBackup(file: File): Promise<{ drawings: number; fol
     (Number.isFinite(a.position) ? (a.position as number) : Number.MAX_SAFE_INTEGER) -
     (Number.isFinite(b.position) ? (b.position as number) : Number.MAX_SAFE_INTEGER) ||
     (Number.isFinite(a.createdAt) ? a.createdAt : 0) - (Number.isFinite(b.createdAt) ? b.createdAt : 0))
+  const validFolderIds = new Set(folderIds.keys())
   const drawingsToAdd: DrawingRecord[] = orderedDrawings.map((record) => {
-    if (!record || typeof record.id !== 'string' || typeof record.name !== 'string' ||
-        !Number.isFinite(record.width) || !Number.isFinite(record.height) ||
-        !Array.isArray(record.tags)) {
+    if (!isValidBackupDrawing(record, validFolderIds)) {
       throw new Error('The backup contains an invalid drawing record.')
     }
     const image = files[`drawings/${record.id}.image`]
