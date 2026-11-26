@@ -927,6 +927,13 @@ details[open] > summary::before {
     color: var(--danger, #c62828);
 }
 
+.merge-tag {
+    margin: 0 0 4px 4px;
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    color: var(--text);
+}
+
 .tag-entry button {
     padding: 2px 8px;
     font-size: 0.8rem;
@@ -1020,6 +1027,35 @@ details[open] > summary::before {
 .tag-filter-content .clear-tag-filters {
     border: 0;
     text-align: left;
+}
+
+.library-nav {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.tag-manager-nav-btn {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tag-manager-nav-btn:hover {
+    background: var(--accent);
+    color: #fff;
 }
 
 .folder-list {
@@ -1123,6 +1159,7 @@ details[open] > summary::before {
         flex: 1 0 100%;
     }
 
+    .library-nav,
     .folder-list,
     .tag-list {
         padding-right: 12px;
@@ -1168,6 +1205,7 @@ details[open] > summary::before {
 
     .menu-toggle { margin-left: auto; }
 
+    .library-nav,
     .folder-list,
     .tag-list {
         padding: 7px 8px;

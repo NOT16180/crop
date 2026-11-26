@@ -9,6 +9,7 @@
     ontoggletheme: () => void
     ontogglehelp: () => void
     onopenaccount: () => void
+    onopentagmanager: () => void
     onbackup: () => void
     onrestore: () => void
   }
@@ -23,6 +24,7 @@
     ontoggletheme,
     ontogglehelp,
     onopenaccount,
+    onopentagmanager,
     onbackup,
     onrestore,
   }: Props = $props()
@@ -45,6 +47,7 @@
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); onclose() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
   <button type="button" onclick={onopenaccount}>{accountSession ? `Account · ${accountSession.user.email}` : 'Sign in'}</button>
+  <button type="button" onclick={() => { onopentagmanager(); onclose() }}>Tag manager</button>
   <button type="button" onclick={() => { onbackup(); onclose() }} title="Download a ZIP copy of your library to this device">Backup</button>
   <button type="button" onclick={() => { onrestore(); onclose() }} title="Merge a Crop backup into this library">Restore</button>
   <a class="support-link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">Feedback</a>

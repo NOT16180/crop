@@ -3,6 +3,7 @@ import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
 import { isAcceptedImage } from '../src/lib/image-validation.ts'
+import { deduplicateTags, renameOrMergeTag, computeTagStats, areBoxesEqual } from '../src/lib/tags.ts'
 
 const folders = new Set(['folder-1'])
 const drawing = {
@@ -56,4 +57,66 @@ test('search matches tag accents and preserves the matching crop', () => {
 test('accepts the advertised image formats and rejects other MIME types', () => {
   assert.equal(isAcceptedImage(new File(['data'], 'study.avif', { type: 'image/avif' })), true)
   assert.equal(isAcceptedImage(new File(['data'], 'notes.txt', { type: 'text/plain' })), false)
+})
+
+test('deduplicates whole image tags with same label', () => {
+  const tags = [
+    { id: '1', label: 'lumiere', box: null },
+    { id: '2', label: 'LUMIERE', box: null },
+    { id: '3', label: 'tete', box: null },
+  ]
+  const deduped = deduplicateTags(tags, ['1', '2'])
+  assert.equal(deduped.tags.length, 2)
+  assert.deepEqual(deduped.tags.map((t) => t.label), ['lumiere', 'tete'])
+  assert.deepEqual(deduped.visibleTagIds, ['1'])
+})
+
+test('deduplicates identical box tags but preserves distinct box tags', () => {
+  const tags = [
+    { id: '1', label: 'visage', box: [10, 10, 50, 50] },
+    { id: '2', label: 'visage', box: [10, 10, 50, 50] },
+    { id: '3', label: 'visage', box: [20, 20, 30, 30] },
+  ]
+  const deduped = deduplicateTags(tags)
+  assert.equal(deduped.tags.length, 2)
+  assert.deepEqual(deduped.tags.map((t) => t.id), ['1', '3'])
+})
+
+test('renaming or merging a tag into an existing tag deduplicates properly', () => {
+  // Scenario from QA report: an image has both 'lumiere' and 'tete' as whole image tags.
+  // Renaming 'tete' to 'lumiere' should result in a single 'lumiere' tag!
+  const drawings = [
+    {
+      id: 'd1', name: 'img1.png', createdAt: 1, width: 100, height: 100,
+      blob: new Blob(), thumb: new Blob(),
+      tags: [
+        { id: 't1', label: 'lumiere', box: null },
+        { id: 't2', label: 'tete', box: null },
+      ],
+      visibleTagIds: ['t1', 't2'],
+    },
+    {
+      id: 'd2', name: 'img2.png', createdAt: 2, width: 100, height: 100,
+      blob: new Blob(), thumb: new Blob(),
+      tags: [
+        { id: 't3', label: 'tete', box: null },
+      ],
+      visibleTagIds: ['t3'],
+    },
+  ]
+
+  const { changedDrawings, affectedCount } = renameOrMergeTag(drawings, 'tete', 'lumiere')
+  assert.equal(affectedCount, 2)
+  assert.equal(changedDrawings[0].tags.length, 1)
+  assert.equal(changedDrawings[0].tags[0].label, 'lumiere')
+  assert.deepEqual(changedDrawings[0].visibleTagIds, ['t1'])
+
+  assert.equal(changedDrawings[1].tags.length, 1)
+  assert.equal(changedDrawings[1].tags[0].label, 'lumiere')
+
+  const stats = computeTagStats(changedDrawings)
+  assert.equal(stats.length, 1)
+  assert.equal(stats[0].label, 'lumiere')
+  assert.equal(stats[0].count, 2) // exactly 2, not 3!
+  assert.equal(stats[0].imageCount, 2)
 })

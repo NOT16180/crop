@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DrawingRecord, FolderRecord, Rect } from './db'
+  import { normalizeText } from './search'
   import Thumb from './Thumb.svelte'
   import Crop from './Crop.svelte'
 
@@ -23,6 +24,7 @@
     sheetSize: string
     folders: FolderRecord[]
     selectedFolderId: string
+    tagSuggestions?: { label: string; count: number }[]
     activeSearchQuery: string
     drawingDisplayName: (drawing: DrawingRecord) => string
     onselectdrawing: (item: GalleryItem) => void
@@ -55,6 +57,7 @@
     sheetSize,
     folders,
     selectedFolderId,
+    tagSuggestions = [],
     activeSearchQuery,
     drawingDisplayName,
     onselectdrawing,
@@ -79,6 +82,35 @@
   let selectedDrawingIds = $state<string[]>([])
   let bulkFolderId = $state('__unfiled__')
   let bulkTagInput = $state('')
+  let activeBulkSuggestion = $state(-1)
+
+  const bulkSuggestions = $derived.by(() => {
+    const val = normalizeText(bulkTagInput)
+    if (!val || !tagSuggestions?.length) return []
+    return tagSuggestions
+      .filter((entry) => {
+        const norm = normalizeText(entry.label)
+        return norm !== val && norm.includes(val)
+      })
+      .slice(0, 6)
+  })
+
+  function onBulkSuggestionKeydown(event: KeyboardEvent) {
+    if (!bulkSuggestions.length) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      activeBulkSuggestion = event.key === 'ArrowDown'
+        ? (activeBulkSuggestion + 1) % bulkSuggestions.length
+        : (activeBulkSuggestion <= 0 ? bulkSuggestions.length - 1 : activeBulkSuggestion - 1)
+    } else if (event.key === 'Enter' && activeBulkSuggestion >= 0) {
+      event.preventDefault()
+      bulkTagInput = bulkSuggestions[activeBulkSuggestion].label
+      activeBulkSuggestion = -1
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      activeBulkSuggestion = -1
+    }
+  }
   let draggedDrawingId = $state<string | null>(null)
   let suppressCardClick = false
 
@@ -193,7 +225,39 @@
       <button type="button" class="danger" onclick={handleDeleteSelected} disabled={selectedDrawingIds.length === 0}>Delete selected</button>
       <button type="button" onclick={() => { selectionMode = false; selectedDrawingIds = [] }}>Cancel</button>
       <form class="bulk-tag-form" onsubmit={(e) => { e.preventDefault(); handleBulkTag() }}>
-        <input type="text" placeholder="Tag selected images…" bind:value={bulkTagInput} autocomplete="off" aria-label="Tag for selected images" />
+        <div class="tag-input-wrap">
+          <input
+            type="text"
+            placeholder="Tag selected images…"
+            bind:value={bulkTagInput}
+            autocomplete="off"
+            aria-label="Tag for selected images"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-controls="bulk-tag-suggestions"
+            aria-expanded={bulkSuggestions.length > 0}
+            aria-activedescendant={activeBulkSuggestion >= 0 && bulkSuggestions.length > 0 ? `bulk-tag-${activeBulkSuggestion}` : undefined}
+            onkeydown={onBulkSuggestionKeydown}
+            oninput={() => (activeBulkSuggestion = -1)}
+          />
+          {#if bulkSuggestions.length > 0}
+            <div class="autocomplete-list" id="bulk-tag-suggestions" role="listbox" aria-label="Tag suggestions">
+              {#each bulkSuggestions as entry, index (entry.label)}
+                <button
+                  type="button"
+                  id="bulk-tag-{index}"
+                  role="option"
+                  aria-selected={activeBulkSuggestion === index}
+                  class:active={activeBulkSuggestion === index}
+                  onclick={() => { bulkTagInput = entry.label; activeBulkSuggestion = -1 }}
+                >
+                  {entry.label}<span>{entry.count}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
         <button type="submit" disabled={!bulkTagInput.trim() || selectedDrawingIds.length === 0}>Tag selected</button>
       </form>
     {/if}

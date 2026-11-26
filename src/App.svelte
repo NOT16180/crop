@@ -7,7 +7,9 @@
   import Toolbar from './lib/Toolbar.svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import AccountModal from './lib/AccountModal.svelte'
+  import TagManagerModal from './lib/TagManagerModal.svelte'
   import Gallery, { type GalleryItem } from './lib/Gallery.svelte'
+  import { computeTagStats, renameOrMergeTag, deleteTagGlobally, deduplicateTags } from './lib/tags'
 
   type Item = GalleryItem
   type Selection = { x: number; y: number; w: number; h: number }
@@ -35,6 +37,7 @@
   let showHelp = $state(false)
   let menuOpen = $state(false)
   let showAccount = $state(false)
+  let showTagManager = $state(false)
   let accountSession = $state<{ user: { email: string; name: string } } | null>(null)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
@@ -124,6 +127,7 @@
     }
     return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
   })
+  const allTagStats = $derived(computeTagStats(drawings))
   const searchSuggestions = $derived.by(() => {
     const value = normalizeText(query)
     if (!value) return []
@@ -171,10 +175,10 @@
 
 
   $effect(() => {
-    const isOpen = Boolean(viewer) || showAccount
+    const isOpen = Boolean(viewer) || showAccount || showTagManager
     const app = document.getElementById('app')
     const background = [...(app?.children ?? [])].filter((element) =>
-      !element.classList.contains('viewer') && !element.classList.contains('account-layer'))
+      !element.classList.contains('viewer') && !element.classList.contains('account-layer') && !element.classList.contains('tag-manager-layer'))
     for (const element of background) (element as HTMLElement).inert = isOpen
     return () => {
       for (const element of background) (element as HTMLElement).inert = false
@@ -492,31 +496,67 @@
     }
   }
 
-  async function deleteTagGroup(label: string) {
-    const key = normalizeText(label)
-    const matches = drawings.filter((drawing) => drawing.tags.some((tag) => normalizeText(tag.label) === key))
-    if (!matches.length || !confirm(`Delete “${label}” from all ${matches.length} image${matches.length === 1 ? '' : 's'}? This cannot be undone.`)) return
-    const removedIds = new Set(matches.flatMap((drawing) => drawing.tags
-      .filter((tag) => normalizeText(tag.label) === key)
-      .map((tag) => tag.id)))
-    const updates = matches.map((drawing) => ({
-      ...drawing,
-      tags: drawing.tags.filter((tag) => normalizeText(tag.label) !== key),
-      visibleTagIds: (drawing.visibleTagIds ?? drawing.tags.map((tag) => tag.id))
-        .filter((id) => !removedIds.has(id)),
-    }))
+  async function handleRenameOrMerge(oldLabel: string, newLabel: string) {
+    const oldKey = normalizeText(oldLabel)
+    const newKey = normalizeText(newLabel)
+    if (!oldKey || !newKey || oldKey === newKey) return
+    const { changedDrawings, affectedCount } = renameOrMergeTag(drawings, oldLabel, newLabel)
+    if (affectedCount === 0) return
+
     try {
       await db.transaction('rw', db.drawings, async () => {
-        for (const drawing of updates) {
-          await db.drawings.update(drawing.id, { tags: drawing.tags, visibleTagIds: drawing.visibleTagIds })
+        for (const drawing of changedDrawings) {
+          const original = drawings.find((d) => d.id === drawing.id)
+          if (original && (original.tags !== drawing.tags || original.visibleTagIds !== drawing.visibleTagIds)) {
+            await db.drawings.update(drawing.id, {
+              tags: drawing.tags,
+              visibleTagIds: drawing.visibleTagIds,
+            })
+          }
         }
       })
-      const updateById = new Map(updates.map((drawing) => [drawing.id, drawing]))
-      drawings = drawings.map((drawing) => updateById.get(drawing.id) ?? drawing)
-      const updatedViewer = viewerId ? updateById.get(viewerId) : undefined
-      if (updatedViewer) visibleTagIds = updatedViewer.visibleTagIds ?? []
+      const updateById = new Map(changedDrawings.map((d) => [d.id, d]))
+      drawings = changedDrawings
+      if (viewerId) {
+        const updatedViewer = updateById.get(viewerId)
+        if (updatedViewer) visibleTagIds = updatedViewer.visibleTagIds ?? []
+      }
+      selectedTagLabels = [...new Set(selectedTagLabels.map((selected) => (selected === oldKey ? newKey : selected)))]
+      notice = oldKey === newKey
+        ? `Renamed “${oldLabel}” to “${newLabel}” throughout the library.`
+        : `Merged “${oldLabel}” into “${newLabel}” across ${affectedCount} image${affectedCount === 1 ? '' : 's'}.`
+      error = ''
+    } catch {
+      error = 'Could not update tags. Check that browser storage is available, then try again.'
+    }
+  }
+
+  async function handleDeleteTagGroup(label: string) {
+    const key = normalizeText(label)
+    if (!key) return
+    const { changedDrawings, affectedCount } = deleteTagGlobally(drawings, label)
+    if (affectedCount === 0) return
+
+    try {
+      await db.transaction('rw', db.drawings, async () => {
+        for (const drawing of changedDrawings) {
+          const original = drawings.find((d) => d.id === drawing.id)
+          if (original && original.tags.length !== drawing.tags.length) {
+            await db.drawings.update(drawing.id, {
+              tags: drawing.tags,
+              visibleTagIds: drawing.visibleTagIds,
+            })
+          }
+        }
+      })
+      const updateById = new Map(changedDrawings.map((d) => [d.id, d]))
+      drawings = changedDrawings
+      if (viewerId) {
+        const updatedViewer = updateById.get(viewerId)
+        if (updatedViewer) visibleTagIds = updatedViewer.visibleTagIds ?? []
+      }
       selectedTagLabels = selectedTagLabels.filter((selected) => selected !== key)
-      notice = `Deleted “${label}” from ${matches.length} image${matches.length === 1 ? '' : 's'}.`
+      notice = `Deleted “${label}” from ${affectedCount} image${affectedCount === 1 ? '' : 's'}.`
       error = ''
     } catch {
       error = 'Could not delete the tag. Check that browser storage is available, then try again.'
@@ -526,28 +566,21 @@
   async function renameTagGroup(label: string) {
     const nextLabel = prompt(`Rename “${label}” everywhere in your library:`, label)?.trim()
     if (!nextLabel || nextLabel === label) return
-    const oldKey = normalizeText(label)
-    const newKey = normalizeText(nextLabel)
-    const previous = new Map(drawings.map((drawing) => [drawing.id, drawing.tags]))
-    const changed = drawings.map((drawing) => ({
-      ...drawing,
-      tags: drawing.tags.map((tag) => normalizeText(tag.label) === oldKey ? { ...tag, label: nextLabel } : tag),
-    }))
-    try {
-      await db.transaction('rw', db.drawings, async () => {
-        for (const drawing of changed) {
-          if (drawing.tags.some((tag, index) => tag.label !== previous.get(drawing.id)?.[index]?.label)) {
-            await db.drawings.update(drawing.id, { tags: drawing.tags })
-          }
-        }
-      })
-      drawings = changed
-      selectedTagLabels = selectedTagLabels.map((selected) => selected === oldKey ? newKey : selected)
-      notice = `Renamed “${label}” to “${nextLabel}” throughout the library.`
-      error = ''
-    } catch {
-      error = 'Could not rename the tag. Check that browser storage is available, then try again.'
-    }
+    await handleRenameOrMerge(label, nextLabel)
+  }
+
+  async function mergeTagGroup(label: string) {
+    const target = prompt(`Merge “${label}” into which existing tag?`)?.trim()
+    if (!target || normalizeText(target) === normalizeText(label)) return
+    if (!confirm(`Merge all occurrences of “${label}” into “${target}”? Duplicate tags on the same image will be combined cleanly.`)) return
+    await handleRenameOrMerge(label, target)
+  }
+
+  async function deleteTagGroup(label: string) {
+    const key = normalizeText(label)
+    const matches = drawings.filter((drawing) => drawing.tags.some((tag) => normalizeText(tag.label) === key))
+    if (!matches.length || !confirm(`Delete “${label}” from all ${matches.length} image${matches.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+    await handleDeleteTagGroup(label)
   }
 
   async function toggleTagVisibility(tagId: string, visible: boolean) {
@@ -902,8 +935,10 @@
       const drawing = byId.get(id)
       if (!drawing) return null
       const tag: Tag = { id: crypto.randomUUID(), label, box: null }
-      const tags = [...drawing.tags, tag]
-      const visibleTagIds = [...new Set([...(drawing.visibleTagIds ?? drawing.tags.map((item) => item.id)), tag.id])]
+      const rawTags = [...drawing.tags, tag]
+      const { tags, visibleTagIds } = deduplicateTags(rawTags, [
+        ...new Set([...(drawing.visibleTagIds ?? drawing.tags.map((item) => item.id)), tag.id]),
+      ])
       return { id, tags, visibleTagIds }
     }).filter((u): u is { id: string; tags: Tag[]; visibleTagIds: string[] } => u !== null)
     if (!updates.length) return
@@ -975,6 +1010,7 @@
   ontoggletheme={toggleTheme}
   ontogglehelp={() => (showHelp = !showHelp)}
   onopenaccount={openAccount}
+  onopentagmanager={() => (showTagManager = true)}
   onbackup={backupLibrary}
   onrestore={() => backupInput.click()}
 />
@@ -1009,6 +1045,15 @@
   onsignout={signOut}
 />
 
+<TagManagerModal
+  open={showTagManager}
+  tags={allTagStats}
+  onclose={() => (showTagManager = false)}
+  onrenametag={handleRenameOrMerge}
+  onmergetag={handleRenameOrMerge}
+  ondeletetag={handleDeleteTagGroup}
+/>
+
 <details class="data-warning">
   <summary>
     <strong>Your library stays in this browser.</strong> Keep a backup of it.
@@ -1031,7 +1076,7 @@
   {/if}
 </details>
 
-<nav class="folder-list" aria-label="Folders">
+<nav class="library-nav" aria-label="Library navigation">
   <details class="folder-menu">
     <summary>
       Folder: {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'All images'}
@@ -1068,10 +1113,8 @@
       <button type="button" onclick={createFolder}>＋ New folder</button>
     </div>
   </details>
-</nav>
 
-{#if tagList.length > 0}
-  <nav class="tag-list" aria-label="Tags">
+  {#if tagList.length > 0}
     <details class="tag-filter-menu">
       <summary>Tags{searching ? ` · ${query.trim()}` : ''} ({tagList.length})</summary>
       <div class="tag-filter-content">
@@ -1089,8 +1132,10 @@
         {/each}
       </div>
     </details>
-  </nav>
-{/if}
+  {/if}
+
+  <button type="button" class="tag-manager-nav-btn" onclick={() => (showTagManager = true)}>Manage tags</button>
+</nav>
 
 {#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
 {#if notice}
@@ -1163,6 +1208,7 @@
       {sheetSize}
       {folders}
       {selectedFolderId}
+      tagSuggestions={tagList}
       {activeSearchQuery}
       {drawingDisplayName}
       onselectdrawing={openViewer}
@@ -1365,6 +1411,7 @@
                   <strong>{group.label}</strong><span>({group.tags.length})</span>
                 </label>
                 <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
+                <button type="button" class="merge-tag" onclick={() => mergeTagGroup(group.label)}>Merge into…</button>
                 <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>Delete everywhere</button>
                 {#each group.tags as tag (tag.id)}
                   <div class="tag-entry">
