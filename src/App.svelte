@@ -35,6 +35,7 @@
   let error = $state('')
   let theme = $state<'dark' | 'light'>('dark')
   let showHelp = $state(false)
+  let menuOpen = $state(false)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
   let zoom = $state(1)
@@ -175,6 +176,10 @@
     void items
     visibleCount = PAGE_SIZE
   })
+
+  function onMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') menuOpen = false
+  }
 
   $effect(() => {
     const isOpen = Boolean(viewer)
@@ -1001,6 +1006,9 @@
 />
 
 <header>
+  <button type="button" class="menu-toggle" aria-expanded={menuOpen} aria-controls="side-menu" onclick={() => (menuOpen = !menuOpen)}>
+    <span aria-hidden="true">☰</span> Menu
+  </button>
   <a class="brand-link" href="/" onclick={(event) => {
     event.preventDefault()
     showHelp = false
@@ -1039,19 +1047,24 @@
       {/if}
     </div>
   </form>
-  <button
-    class="theme-toggle"
-    onclick={toggleTheme}
-    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-    aria-pressed={theme === 'light'}
-    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-  >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
-  <button type="button" aria-pressed={showHelp} onclick={() => (showHelp = !showHelp)}>{showHelp ? 'Back to library' : 'How to use'}</button>
-  <a class="support-link" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">Feedback</a>
-  <button onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add</button>
-  <button type="button" onclick={backupLibrary} title="Download a ZIP copy of your library to this device">Backup</button>
-  <button type="button" onclick={() => backupInput.click()} title="Merge a Crop backup into this library">Restore</button>
-  <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+  {#if menuOpen}
+    <button class="menu-backdrop" type="button" aria-label="Close menu" onclick={() => (menuOpen = false)} onkeydown={onMenuKeydown}></button>
+  {/if}
+  <aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label="Main menu" aria-hidden={!menuOpen} inert={!menuOpen}>
+    <div class="side-menu-heading"><strong>MENU</strong><button type="button" onclick={() => (menuOpen = false)} aria-label="Close menu">×</button></div>
+    <button
+      class="theme-toggle"
+      onclick={() => { toggleTheme(); menuOpen = false }}
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-pressed={theme === 'light'}
+    >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+    <button type="button" aria-pressed={showHelp} onclick={() => { showHelp = !showHelp; menuOpen = false }}>{showHelp ? 'Back to library' : 'How to use'}</button>
+    <button type="button" onclick={() => { fileInput.click(); menuOpen = false }} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add images</button>
+    <button type="button" onclick={() => { backupLibrary(); menuOpen = false }} title="Download a ZIP copy of your library to this device">Backup</button>
+    <button type="button" onclick={() => { backupInput.click(); menuOpen = false }} title="Merge a Crop backup into this library">Restore</button>
+    <a class="support-link" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">Feedback</a>
+    <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+  </aside>
   <input
     bind:this={fileInput}
     type="file"
