@@ -1,6 +1,6 @@
 # Crop
 
-**Crop is an early version of a personal drawing library.** It helps you organize images with manually assigned tags and find drawings or specific areas within them. No AI or application server is involved: drawings and tags stay in IndexedDB in your browser.
+**Crop is an early version of a personal drawing library.** It helps you organize images with manually assigned tags and find drawings or specific areas within them. Images and tags stay in IndexedDB in the browser. Email account sign-in is implemented as the first step toward cloud sync; signing in does not upload the library. It requires the Cloudflare and email settings below before it can be used on the deployed site.
 
 ## Try Crop locally
 
@@ -30,7 +30,7 @@ Open the address shown in the terminal (usually http://localhost:5173).
 
 ## Data and privacy
 
-Drawings and tags are stored in IndexedDB in your browser. The selected theme is stored in local storage. There are no accounts, backend, or synchronization, so each browser has its own library. Clearing this site's browser data may erase the library. Keep the original image files too, and make backups regularly.
+Drawings and tags are stored in IndexedDB in your browser. The selected theme is stored in local storage. Accounts currently provide sign-in only and do not upload or sync drawings, so each browser still has its own library. Clearing this site's browser data may erase the library. Keep the original image files too, and make backups regularly.
 
 Crop asks the browser for persistent storage when it starts and again after the first import, and shows how much room the library takes. Browsers grant persistence to apps they trust, so installing Crop is the reliable way to keep a library out of reach of automatic cleanup.
 
@@ -48,15 +48,31 @@ Include a short demo or a few screenshots with your post, then share it in commu
 
 ## Deploy to Cloudflare
 
-Crop is a static site and can be deployed to Cloudflare Workers as static assets, without a backend:
+Crop is served as static assets by a Cloudflare Worker. The Worker also provides the account API and connects to a D1 database:
 
 1. Create a Worker connected to this Git repository in **Workers & Pages**.
-2. Set the build command to `npm run build` and the deploy command to `npx wrangler deploy`.
-3. Deploy. `wrangler.jsonc` points Wrangler to `dist`, and the `public/_headers` file is copied into that directory to set response headers.
+2. Set the build command to `npm run build` and the deploy command to `npx wrangler deploy --keep-vars` so dashboard variables are preserved.
+3. Create the D1 database with `npx wrangler d1 create crop-auth` and put the returned database ID in `wrangler.jsonc`.
+4. Set the Worker variables and secrets described below, then apply the account schema with `npx wrangler d1 migrations apply crop-auth --remote`.
+5. Deploy. `wrangler.jsonc` points Wrangler to `dist`, and the `public/_headers` file is copied into that directory to set response headers.
 
-For a manual deployment, run `npm install`, `npm run build`, then `npx wrangler deploy`. Cloudflare also offers Pages: if you choose Pages, configure its build command as `npm run build` and output directory as `dist`, then deploy through the Pages integration or with `npx wrangler pages deploy dist`.
+In Cloudflare, open **Workers & Pages → crop → Settings → Variables and Secrets**. Add these as plain text variables (they are configuration, not credentials):
 
-The app uses browser storage only, so no Cloudflare database, Worker, or environment variables are required. Each visitor's library remains in that visitor's browser.
+- `AUTH_URL`: the exact public origin, such as `https://crop.example.com` (HTTPS, no path).
+- `AUTH_EMAIL_FROM`: a sender on the verified email domain, such as `Crop <login@example.com>`.
+
+In Resend, verify the sending domain by adding its requested DNS records, then create an API key with **Sending access** restricted to that domain. In your local terminal, set both values as Worker secrets:
+
+- `BETTER_AUTH_SECRET`: generate it locally with `npx auth@latest secret`, then run `npx wrangler secret put BETTER_AUTH_SECRET` and paste it into Wrangler's hidden prompt.
+- `RESEND_API_KEY`: run `npx wrangler secret put RESEND_API_KEY` and paste the restricted Resend key into Wrangler's hidden prompt.
+
+Never put either secret in `wrangler.jsonc`, source code, a commit, or a chat. Wrangler stores secrets encrypted; its `secret put` command prompts for the value and deploys a Worker version. Keep dashboard variables on later CLI deployments by using `--keep-vars`.
+
+Sign-in links expire after 10 minutes; their tokens are hashed in D1. Requests for links are limited to three per IP per minute, with persistent rate-limit counters in D1. The Worker only trusts the configured HTTPS origin and uses Cloudflare's client IP header for rate limiting.
+
+For local Worker development, create an ignored `.dev.vars` file with those four values. Use a separate local D1 database with `npx wrangler d1 migrations apply crop-auth --local`. Run `npm run build` and then `npx wrangler dev` to use the Worker locally. `npm run dev` starts Vite's static development server and does not provide the account API.
+
+For a manual deployment, run `npm install`, `npm run build`, then `npx wrangler deploy --keep-vars`. Pages-only deployment is no longer sufficient for the account API; the site must run through the configured Worker.
 
 ## Design language
 

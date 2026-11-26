@@ -32,6 +32,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
+  // Auth responses contain account/session data and must always be network-only.
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request))
+    return
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(

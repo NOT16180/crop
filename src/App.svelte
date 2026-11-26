@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
-  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail } from './lib/images'
+  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
-  import Thumb from './lib/Thumb.svelte'
-  import Crop from './lib/Crop.svelte'
+  import { authClient } from './lib/auth-client'
+  import Toolbar from './lib/Toolbar.svelte'
+  import Sidebar from './lib/Sidebar.svelte'
+  import AccountModal from './lib/AccountModal.svelte'
+  import Gallery, { type GalleryItem } from './lib/Gallery.svelte'
 
-  type Item = { key: string; drawing: DrawingRecord; box: Rect | null; label?: string }
+  type Item = GalleryItem
   type Selection = { x: number; y: number; w: number; h: number }
   type Corner = 'nw' | 'ne' | 'sw' | 'se'
   type ResizeSession = {
@@ -22,20 +25,17 @@
   let selectedTagLabels = $state<string[]>([])
   let tagMatchMode = $state<'all' | 'any'>('all')
   let sortMode = $state<'manual' | 'name' | 'newest' | 'oldest'>('manual')
-  let selectionMode = $state(false)
-  let arrangingDrawings = $state(false)
-  let selectedDrawingIds = $state<string[]>([])
-  let bulkFolderId = $state('__unfiled__')
   let pendingDeletedDrawings = $state<DrawingRecord[]>([])
   let notice = $state('')
   let draggedDrawingId = $state<string | null>(null)
-  let suppressCardClick = false
   let query = $state('')
   let dragging = $state(false)
   let error = $state('')
   let theme = $state<'dark' | 'light'>('dark')
   let showHelp = $state(false)
   let menuOpen = $state(false)
+  let showAccount = $state(false)
+  let accountSession = $state<{ user: { email: string; name: string } } | null>(null)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
   let zoom = $state(1)
@@ -64,9 +64,7 @@
   let sheetSize = $state('6')
   let installEvent = $state<{ prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> } | null>(null)
   let installed = $state(false)
-  let bulkTagInput = $state('')
   let dragOverFolderId = $state<string | null>(null)
-  let activeSearchSuggestion = $state(-1)
   let activeTagSuggestion = $state(-1)
 
 
@@ -147,28 +145,22 @@
       .slice(0, 6)
   })
 
-  function onSuggestionKeydown(event: KeyboardEvent, kind: 'search' | 'tag') {
-    const suggestions = kind === 'search' ? searchSuggestions : tagSuggestions
-    const active = kind === 'search' ? activeSearchSuggestion : activeTagSuggestion
-    if (!suggestions.length) return
+  function onTagSuggestionKeydown(event: KeyboardEvent) {
+    if (!tagSuggestions.length) return
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       const next = event.key === 'ArrowDown'
-        ? (active + 1) % suggestions.length
-        : (active <= 0 ? suggestions.length - 1 : active - 1)
-      if (kind === 'search') activeSearchSuggestion = next
-      else activeTagSuggestion = next
-    } else if (event.key === 'Enter' && active >= 0) {
+        ? (activeTagSuggestion + 1) % tagSuggestions.length
+        : (activeTagSuggestion <= 0 ? tagSuggestions.length - 1 : activeTagSuggestion - 1)
+      activeTagSuggestion = next
+    } else if (event.key === 'Enter' && activeTagSuggestion >= 0) {
       event.preventDefault()
-      if (kind === 'search') query = suggestions[active].label
-      else tagInput = suggestions[active].label
-      if (kind === 'search') activeSearchSuggestion = -1
-      else activeTagSuggestion = -1
+      tagInput = tagSuggestions[activeTagSuggestion].label
+      activeTagSuggestion = -1
     } else if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
-      if (kind === 'search') activeSearchSuggestion = -1
-      else activeTagSuggestion = -1
+      activeTagSuggestion = -1
     }
   }
 
@@ -177,14 +169,12 @@
     visibleCount = PAGE_SIZE
   })
 
-  function onMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') menuOpen = false
-  }
 
   $effect(() => {
-    const isOpen = Boolean(viewer)
+    const isOpen = Boolean(viewer) || showAccount
     const app = document.getElementById('app')
-    const background = [...(app?.children ?? [])].filter((element) => !element.classList.contains('viewer'))
+    const background = [...(app?.children ?? [])].filter((element) =>
+      !element.classList.contains('viewer') && !element.classList.contains('account-layer'))
     for (const element of background) (element as HTMLElement).inert = isOpen
     return () => {
       for (const element of background) (element as HTMLElement).inert = false
@@ -212,6 +202,7 @@
   }
 
   onMount(async () => {
+    void refreshAccountSession()
     try {
       theme = window.localStorage.getItem('drawing-library-theme') === 'dark' ? 'dark' : 'light'
     } catch {
@@ -241,6 +232,26 @@
     await reload()
     await refreshStorageUsage()
   })
+
+  async function refreshAccountSession() {
+    try {
+      const { data } = await authClient.getSession()
+      accountSession = data?.user ? { user: { email: data.user.email, name: data.user.name } } : null
+    } catch {
+      accountSession = null
+    }
+  }
+
+  async function openAccount() {
+    menuOpen = false
+    showAccount = true
+    await refreshAccountSession()
+  }
+
+  async function signOut() {
+    await authClient.signOut()
+    accountSession = null
+  }
 
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark'
@@ -284,25 +295,6 @@
     }
   }
 
-  function startDrawingDrag(event: DragEvent, drawingId: string) {
-    draggedDrawingId = drawingId
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', drawingId)
-    }
-  }
-
-  async function dropDrawing(event: DragEvent, targetId: string) {
-    event.preventDefault()
-    event.stopPropagation()
-    const sourceId = draggedDrawingId ?? event.dataTransfer?.getData('text/plain')
-    draggedDrawingId = null
-    if (!sourceId || sourceId === targetId) return
-    suppressCardClick = true
-    window.setTimeout(() => (suppressCardClick = false), 0)
-
-    await swapDrawings(sourceId, targetId)
-  }
 
   async function swapDrawings(sourceId: string, targetId: string) {
     const arranged = [...drawings].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
@@ -331,13 +323,6 @@
     await swapDrawings(id, target.id)
   }
 
-  function openCard(item: Item) {
-    if (suppressCardClick) {
-      suppressCardClick = false
-      return
-    }
-    openViewer(item)
-  }
 
   function drawingDisplayName(drawing: DrawingRecord) {
     const duplicate = drawings.some((candidate) => candidate.id !== drawing.id && candidate.name === drawing.name)
@@ -386,24 +371,11 @@
     if (selectedFolderId === folder.id) selectedFolderId = ''
   }
 
-  function toggleDrawingSelection(id: string, checked: boolean) {
-    selectedDrawingIds = checked
-      ? [...new Set([...selectedDrawingIds, id])]
-      : selectedDrawingIds.filter((selected) => selected !== id)
-  }
-
-  function selectAllVisible() {
-    selectedDrawingIds = [...new Set(items.map((item) => item.drawing.id))]
-  }
-
-  async function moveSelectedDrawings() {
-    if (selectedDrawingIds.length === 0) return
-    const folderId = bulkFolderId === '__unfiled__' ? undefined : bulkFolderId
-    await Promise.all(selectedDrawingIds.map((id) => db.drawings.update(id, { folderId })))
-    const selected = new Set(selectedDrawingIds)
+  async function moveSelectedDrawings(folderId: string | undefined, selectedIds: string[]) {
+    if (selectedIds.length === 0) return
+    await Promise.all(selectedIds.map((id) => db.drawings.update(id, { folderId })))
+    const selected = new Set(selectedIds)
     drawings = drawings.map((drawing) => selected.has(drawing.id) ? { ...drawing, folderId } : drawing)
-    selectedDrawingIds = []
-    selectionMode = false
     notice = `Moved images to ${folders.find((folder) => folder.id === folderId)?.name ?? 'Unfiled'}.`
   }
 
@@ -611,7 +583,6 @@
       deleteTimer = undefined
     }, 8000)
     drawings = drawings.filter((item) => item.id !== drawing.id)
-    selectedDrawingIds = selectedDrawingIds.filter((id) => id !== drawing.id)
     closeViewer()
     notice = `“${drawing.name}” deleted.`
     void refreshStorageUsage()
@@ -874,44 +845,21 @@
     drawings = drawings.map((d) => d.id === drawing.id ? { ...d, name } : d)
   }
 
-  async function downloadCrop(blob: Blob, box: Rect | null, baseName: string) {
+  async function handleCopyCrop(blob: Blob, box: Rect | null, name = 'Crop') {
     try {
-      let resultBlob: Blob
-      let fileName: string
-      if (box) {
-        const [x, y, w, h] = box
-        const bitmap = await createImageBitmap(blob, Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
-        const cropWidth = Math.max(1, Math.round(w))
-        const cropHeight = Math.max(1, Math.round(h))
-        const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
-          ? new OffscreenCanvas(cropWidth, cropHeight)
-          : Object.assign(document.createElement('canvas'), { width: cropWidth, height: cropHeight })
-        try {
-          const context = canvas.getContext('2d')
-          if (!context) throw new Error('Canvas is unavailable')
-          context.drawImage(bitmap, 0, 0)
-          resultBlob = typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
-            ? await canvas.convertToBlob({ type: 'image/png' })
-            : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
-                (result) => result ? resolve(result) : reject(new Error('Could not export crop')),
-                'image/png',
-              ))
-        } finally {
-          bitmap.close()
-        }
-        fileName = `${baseName.replace(/\.[^.]+$/, '')}-crop.png`
-      } else {
-        resultBlob = blob
-        fileName = baseName
-      }
-      const url = URL.createObjectURL(resultBlob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = fileName
-      document.body.append(anchor)
-      anchor.click()
-      anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      await copyCropToClipboard(blob, box)
+      notice = `${name} copied to clipboard.`
+      error = ''
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Could not copy image to clipboard.'
+    }
+  }
+
+  async function handleDownloadCrop(blob: Blob, box: Rect | null, baseName: string) {
+    try {
+      await downloadCrop(blob, box, baseName)
+      notice = `${baseName} downloaded.`
+      error = ''
     } catch {
       error = 'Could not export the image.'
     }
@@ -931,11 +879,11 @@
     openViewer(next)
   }
 
-  async function deleteSelectedDrawings() {
-    if (selectedDrawingIds.length === 0) return
-    if (!confirm(`Delete ${selectedDrawingIds.length} image${selectedDrawingIds.length === 1 ? '' : 's'}? You can undo this for 8 seconds.`)) return
-    await deleteDrawings(selectedDrawingIds)
-    const deleted = new Set(selectedDrawingIds)
+  async function deleteSelectedDrawings(selectedIds: string[]) {
+    if (selectedIds.length === 0) return
+    if (!confirm(`Delete ${selectedIds.length} image${selectedIds.length === 1 ? '' : 's'}? You can undo this for 8 seconds.`)) return
+    await deleteDrawings(selectedIds)
+    const deleted = new Set(selectedIds)
     const removed = drawings.filter((drawing) => deleted.has(drawing.id))
     pendingDeletedDrawings = [...pendingDeletedDrawings, ...removed]
     if (deleteTimer) clearTimeout(deleteTimer)
@@ -944,16 +892,13 @@
       deleteTimer = undefined
     }, 8000)
     drawings = drawings.filter((d) => !deleted.has(d.id))
-    selectedDrawingIds = []
-    selectionMode = false
     notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted. Undo is available for 8 seconds.`
     void refreshStorageUsage()
   }
 
-  async function bulkAddTag() {
-    const label = bulkTagInput.trim()
-    if (!label || selectedDrawingIds.length === 0) return
-    const updates = selectedDrawingIds.map((id) => {
+  async function bulkAddTag(label: string, selectedIds: string[]) {
+    if (!label || selectedIds.length === 0) return
+    const updates = selectedIds.map((id) => {
       const drawing = byId.get(id)
       if (!drawing) return null
       const tag: Tag = { id: crypto.randomUUID(), label, box: null }
@@ -961,13 +906,13 @@
       const visibleTagIds = [...new Set([...(drawing.visibleTagIds ?? drawing.tags.map((item) => item.id)), tag.id])]
       return { id, tags, visibleTagIds }
     }).filter((u): u is { id: string; tags: Tag[]; visibleTagIds: string[] } => u !== null)
+    if (!updates.length) return
     await Promise.all(updates.map(({ id, tags, visibleTagIds }) => db.drawings.update(id, { tags, visibleTagIds })))
     const tagMap = new Map(updates.map((u) => [u.id, u.tags]))
     const visibleMap = new Map(updates.map((u) => [u.id, u.visibleTagIds]))
     drawings = drawings.map((d) => tagMap.has(d.id)
       ? { ...d, tags: tagMap.get(d.id)!, visibleTagIds: visibleMap.get(d.id) }
       : d)
-    bulkTagInput = ''
     notice = `Tag "${label}" added to ${updates.length} image${updates.length === 1 ? '' : 's'}.`
   }
 
@@ -1005,89 +950,64 @@
   ondrop={onDrop}
 />
 
-<header>
-  <button type="button" class="menu-toggle" aria-expanded={menuOpen} aria-controls="side-menu" onclick={() => (menuOpen = !menuOpen)}>
-    <span aria-hidden="true">☰</span> Menu
-  </button>
-  <a class="brand-link" href="/" onclick={(event) => {
-    event.preventDefault()
+<Toolbar
+  {menuOpen}
+  ontogglemenu={() => (menuOpen = !menuOpen)}
+  onresetview={() => {
     showHelp = false
     selectedFolderId = ''
     selectedTagLabels = []
     query = ''
-  }}><h1>CROP</h1></a>
-  <form class="search-form" onsubmit={(e) => e.preventDefault()}>
-    <div class="search-control">
-      <input
-        type="search"
-        placeholder="Search images by tag (e.g. face, hands, landscape)…"
-        bind:value={query}
-        aria-label="Search tags"
-        role="combobox"
-        aria-autocomplete="list"
-        aria-haspopup="listbox"
-        aria-controls="search-suggestions"
-        aria-expanded={searchSuggestions.length > 0}
-        aria-activedescendant={activeSearchSuggestion >= 0 && searchSuggestions.length > 0 ? `search-suggestion-${activeSearchSuggestion}` : undefined}
-        onkeydown={(event) => onSuggestionKeydown(event, 'search')}
-        oninput={() => (activeSearchSuggestion = -1)}
-        autocomplete="off"
-      />
-      {#if searching}
-        <button type="button" class="clear-search" onclick={() => (query = '')} aria-label="Clear search" title="Clear search">×</button>
-      {/if}
-      {#if searchSuggestions.length > 0}
-        <div class="autocomplete-list" id="search-suggestions" role="listbox" aria-label="Tag suggestions">
-          {#each searchSuggestions as entry, index (entry.label)}
-            <button type="button" id="search-suggestion-{index}" role="option" aria-selected={activeSearchSuggestion === index} class:active={activeSearchSuggestion === index} onclick={() => { query = entry.label; activeSearchSuggestion = -1 }}>
-              {entry.label}<span>{entry.count}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-  </form>
-  <button type="button" class="add-image-button" onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add images</button>
-  {#if menuOpen}
-    <button class="menu-backdrop" type="button" aria-label="Close menu" onclick={() => (menuOpen = false)} onkeydown={onMenuKeydown}></button>
-  {/if}
-  <aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label="Main menu" aria-hidden={!menuOpen} inert={!menuOpen}>
-    <div class="side-menu-heading"><strong>MENU</strong><button type="button" onclick={() => (menuOpen = false)} aria-label="Close menu">×</button></div>
-    <button
-      class="theme-toggle"
-      onclick={() => { toggleTheme(); menuOpen = false }}
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      aria-pressed={theme === 'light'}
-    >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
-    <button type="button" aria-pressed={showHelp} onclick={() => { showHelp = !showHelp; menuOpen = false }}>{showHelp ? 'Back to library' : 'How to use'}</button>
-    <button type="button" onclick={() => { backupLibrary(); menuOpen = false }} title="Download a ZIP copy of your library to this device">Backup</button>
-    <button type="button" onclick={() => { backupInput.click(); menuOpen = false }} title="Merge a Crop backup into this library">Restore</button>
-    <a class="support-link" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">Feedback</a>
-    <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
-  </aside>
-  <input
-    bind:this={fileInput}
-    type="file"
-    accept="image/png,image/jpeg,image/webp,image/avif"
-    multiple
-    hidden
-    onchange={(e) => {
-      addFiles([...(e.currentTarget.files ?? [])])
-      e.currentTarget.value = ''
-    }}
-  />
-  <input
-    bind:this={backupInput}
-    type="file"
-    accept=".zip,application/zip"
-    hidden
-    onchange={(event) => {
-      const file = event.currentTarget.files?.[0]
-      if (file) restoreLibrary(file)
-      event.currentTarget.value = ''
-    }}
-  />
-</header>
+  }}
+  {query}
+  onquerychange={(q) => (query = q)}
+  {searchSuggestions}
+  onaddimages={() => fileInput.click()}
+/>
+
+<Sidebar
+  {menuOpen}
+  {theme}
+  {showHelp}
+  {accountSession}
+  feedbackUrl={FEEDBACK_URL}
+  onclose={() => (menuOpen = false)}
+  ontoggletheme={toggleTheme}
+  ontogglehelp={() => (showHelp = !showHelp)}
+  onopenaccount={openAccount}
+  onbackup={backupLibrary}
+  onrestore={() => backupInput.click()}
+/>
+
+<input
+  bind:this={fileInput}
+  type="file"
+  accept="image/png,image/jpeg,image/webp,image/avif"
+  multiple
+  hidden
+  onchange={(e) => {
+    addFiles([...(e.currentTarget.files ?? [])])
+    e.currentTarget.value = ''
+  }}
+/>
+<input
+  bind:this={backupInput}
+  type="file"
+  accept=".zip,application/zip"
+  hidden
+  onchange={(event) => {
+    const file = event.currentTarget.files?.[0]
+    if (file) restoreLibrary(file)
+    event.currentTarget.value = ''
+  }}
+/>
+
+<AccountModal
+  open={showAccount}
+  session={accountSession}
+  onclose={() => (showAccount = false)}
+  onsignout={signOut}
+/>
 
 <details class="data-warning">
   <summary>
@@ -1230,116 +1150,42 @@
     {#if hasFilters && items.length === 0}
       <p class="results-title">No images match these filters.</p>
     {/if}
-    {#if folderDrawings.length === 0 && !hasFilters}
-      <p class="results-title">This folder is empty. Add images to it.</p>
-    {:else if items.length > 0}
-      <div class="library-actions">
-        {#if !selectionMode}
-          <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>Select images</button>
-        {/if}
-        {#if !arrangingDrawings}
-          <button type="button" onclick={() => { arrangingDrawings = true; selectionMode = false }}>Arrange images</button>
-        {:else}
-          <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
-        {/if}
-        <button type="button" onclick={exportSheet} disabled={items.length === 0} title="Export the images shown as one PNG sheet you can share">Export sheet</button>
-        <label>Sheet
-          <select bind:value={sheetSize} aria-label="Number of images on the sheet">
-            <option value="6">6 images</option>
-            <option value="12">12 images</option>
-            <option value="24">24 images</option>
-            <option value="48">48 images</option>
-            <option value="all">All images ({items.length})</option>
-          </select>
-        </label>
-        <label>Sort
-          <select bind:value={sortMode} aria-label="Sort images">
-            <option value="manual">Manual order</option>
-            <option value="name">Name</option>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-          </select>
-        </label>
-        {#if selectionMode}
-          <span>{selectedDrawingIds.length} selected</span>
-          <button type="button" onclick={selectAllVisible}>Select all visible</button>
-          <label>Move to
-            <select bind:value={bulkFolderId}>
-              <option value="__unfiled__">Unfiled</option>
-              {#each folders as folder (folder.id)}<option value={folder.id}>{folder.name}</option>{/each}
-            </select>
-          </label>
-          <button type="button" onclick={moveSelectedDrawings} disabled={selectedDrawingIds.length === 0}>Move selected</button>
-          <button type="button" class="danger" onclick={deleteSelectedDrawings} disabled={selectedDrawingIds.length === 0}>Delete selected</button>
-          <button type="button" onclick={() => { selectionMode = false; selectedDrawingIds = [] }}>Cancel</button>
-          <form class="bulk-tag-form" onsubmit={(e) => { e.preventDefault(); bulkAddTag() }}>
-            <input type="text" placeholder="Tag selected images…" bind:value={bulkTagInput} autocomplete="off" aria-label="Tag for selected images" />
-            <button type="submit" disabled={!bulkTagInput.trim() || selectedDrawingIds.length === 0}>Tag selected</button>
-          </form>
-        {/if}
-      </div>
-      <ul class="grid">
-        {#each pagedItems as item, index (item.key)}
-          <li>
-            <button
-              class="card"
-              style:aspect-ratio={item.box ? item.box[2] / item.box[3] : item.drawing.width / item.drawing.height}
-              draggable={!searching && selectedTagLabels.length === 0 && sortMode === 'manual'}
-            ondragstart={(event) => startDrawingDrag(event, item.drawing.id)}
-            ondragend={() => (draggedDrawingId = null)}
-            ondragover={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-            }}
-            ondrop={(event) => dropDrawing(event, item.drawing.id)}
-              onclick={() => openCard(item)}
-              aria-label={`Open ${drawingDisplayName(item.drawing)}`}
-              title={activeSearchQuery ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
-            >
-              {#if item.box}
-                <Crop
-                  blob={item.drawing.blob}
-                  box={item.box}
-                  width={item.drawing.width}
-                  height={item.drawing.height}
-                  alt={item.drawing.name}
-                />
-                {#if item.label}<span class="badge">{item.label}</span>{/if}
-              {:else}
-                <Thumb blob={item.drawing.thumb} alt={item.drawing.name} onfail={() => repairDrawing(item.drawing)} />
-              {/if}
-            </button>
-            <div class="drawing-meta">
-              <span class="drawing-name" title={drawingDisplayName(item.drawing)}>{drawingDisplayName(item.drawing)}</span>
-              {#if selectionMode}
-                <label class="drawing-select">
-                  <input
-                    type="checkbox"
-                    checked={selectedDrawingIds.includes(item.drawing.id)}
-                    onchange={(event) => toggleDrawingSelection(item.drawing.id, event.currentTarget.checked)}
-                  />
-                  Select
-                </label>
-              {/if}
-              {#if arrangingDrawings && !hasFilters && sortMode === 'manual'}
-                <div class="reorder-buttons" aria-label="Reorder image {item.drawing.name}">
-                  <button type="button" disabled={index === 0} onclick={() => moveDrawing(item.drawing.id, -1)} aria-label="Move image {item.drawing.name} earlier">↑</button>
-                  <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => moveDrawing(item.drawing.id, 1)} aria-label="Move image {item.drawing.name} later">↓</button>
-                </div>
-              {/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
-      {#if visibleCount < items.length}
-        <button type="button" class="load-more" onclick={() => (visibleCount += PAGE_SIZE)}>Load {Math.min(PAGE_SIZE, items.length - visibleCount)} more ({items.length - visibleCount} remaining)</button>
-      {/if}
+    <Gallery
+      {folderDrawings}
+      {hasFilters}
+      {items}
+      {pagedItems}
+      {visibleCount}
+      pageSize={PAGE_SIZE}
+      {searching}
+      {selectedTagLabels}
+      {sortMode}
+      {sheetSize}
+      {folders}
+      {selectedFolderId}
+      {activeSearchQuery}
+      {drawingDisplayName}
+      onselectdrawing={openViewer}
+      onrepairdrawing={repairDrawing}
+      oncopycrop={handleCopyCrop}
+      ondownloadcrop={handleDownloadCrop}
+      onexportsheet={exportSheet}
+      onmovedrawing={moveDrawing}
+      onswapdrawings={swapDrawings}
+      onmoveselected={moveSelectedDrawings}
+      ondeleteselected={deleteSelectedDrawings}
+      onbulktag={bulkAddTag}
+      onloadmore={() => (visibleCount += PAGE_SIZE)}
+      onsortchange={(mode) => (sortMode = mode)}
+      onsheetsizechange={(size) => (sheetSize = size)}
+      ondragstart={(id) => (draggedDrawingId = id)}
+      ondragend={() => (draggedDrawingId = null)}
+    />
     {/if}
-  {/if}
   {/if}
 </main>
 
-{#if dragging}
+  {#if dragging}
   <div class="drop-overlay">Drop images here to add them</div>
 {/if}
 
@@ -1348,12 +1194,20 @@
     <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
     <figure style="max-height: calc(100dvh - 24px); overflow: auto" aria-label="Image and tag controls">
       <div class="viewer-toolbar">
-      <div class="zoom-controls" aria-label="Image zoom controls">
-        <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
-        <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in">+</button>
-        <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom">Reset</button>
-      </div>
+        <div class="zoom-controls" aria-label="Image zoom controls">
+          <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
+          <span aria-live="polite">{Math.round(zoom * 100)}%</span>
+          <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in">+</button>
+          <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom">Reset</button>
+        </div>
+        {#if viewerBox}
+          <div class="viewer-active-crop" aria-label="Focused crop actions">
+            <span class="active-crop-label">Focused crop</span>
+            <button type="button" onclick={() => viewer && viewerBox && handleCopyCrop(viewer.blob, viewerBox, 'Focused crop')} title="Copy focused crop to clipboard">Copy</button>
+            <button type="button" onclick={() => viewer && viewerBox && handleDownloadCrop(viewer.blob, viewerBox, `${viewer.name.replace(/\.[^.]+$/, '')}-crop`)} title="Download focused crop as PNG">Download</button>
+            <button type="button" class="clear-crop-btn" onclick={() => (viewerBox = null)} title="Clear crop focus">×</button>
+          </div>
+        {/if}
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
@@ -1383,13 +1237,24 @@
                 style:width={pct(box[2], viewer.width)}
                 style:height={pct(box[3], viewer.height)}
               >
-                <em><span class="tag-label">{tag.label}</span><button
-                  type="button"
-                  aria-label="Remove {tag.label} tag"
-                  title="Remove tag from image"
-                  onpointerdown={(event) => event.stopPropagation()}
-                  onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
-                >×</button></em>
+                <em>
+                  <span class="tag-label">{tag.label}</span>
+                  <button
+                    type="button"
+                    class="tag-copy-btn"
+                    aria-label="Copy {tag.label} crop to clipboard"
+                    title="Copy crop to clipboard"
+                    onpointerdown={(event) => event.stopPropagation()}
+                    onclick={(event) => { event.stopPropagation(); if (viewer && tag.box) handleCopyCrop(viewer.blob, tag.box, `Crop "${tag.label}"`) }}
+                  >📋</button>
+                  <button
+                    type="button"
+                    aria-label="Remove {tag.label} tag"
+                    title="Remove tag from image"
+                    onpointerdown={(event) => event.stopPropagation()}
+                    onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
+                  >×</button>
+                </em>
                 <button type="button" class="resize-handle nw" aria-label="Resize {tag.label}, top-left corner" onpointerdown={(event) => startResize(event, tag, 'nw')}></button>
                 <button type="button" class="resize-handle ne" aria-label="Resize {tag.label}, top-right corner" onpointerdown={(event) => startResize(event, tag, 'ne')}></button>
                 <button type="button" class="resize-handle sw" aria-label="Resize {tag.label}, bottom-left corner" onpointerdown={(event) => startResize(event, tag, 'sw')}></button>
@@ -1447,7 +1312,7 @@
             aria-controls="tag-suggestions"
             aria-expanded={tagSuggestions.length > 0}
             aria-activedescendant={activeTagSuggestion >= 0 && tagSuggestions.length > 0 ? `tag-suggestion-${activeTagSuggestion}` : undefined}
-            onkeydown={(event) => onSuggestionKeydown(event, 'tag')}
+            onkeydown={onTagSuggestionKeydown}
             oninput={() => (activeTagSuggestion = -1)}
             autocomplete="off"
           />
@@ -1463,12 +1328,14 @@
         </div>
         <button type="submit" disabled={!tagInput.trim()}>Add tag</button>
         {#if selection && viewer}
-          <button type="button" onclick={() => viewer && selection && downloadCrop(viewer.blob, [
+          {@const selBox: Rect = [
             Math.round(selection.x * viewer.width),
             Math.round(selection.y * viewer.height),
             Math.max(1, Math.round(selection.w * viewer.width)),
             Math.max(1, Math.round(selection.h * viewer.height)),
-          ], viewer.name)}>Download crop</button>
+          ]}
+          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, selBox, 'Selected area')} title="Copy selected area to clipboard">Copy crop</button>
+          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, selBox, viewer.name)} title="Download selected area as PNG">Download crop</button>
           <button type="button" onclick={() => (selection = null)}>Cancel selection</button>
         {/if}
         {#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
@@ -1511,7 +1378,8 @@
                     </label>
                     <span class="tag-entry-actions">
                       {#if tag.box}
-                        <button type="button" onclick={() => viewer && downloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)}>Download</button>
+                        <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, tag.box, `Crop "${tag.label}"`)} title="Copy crop to clipboard">Copy</button>
+                        <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)} title="Download crop as PNG">Download</button>
                       {/if}
                       <button
                         type="button"
@@ -1531,7 +1399,8 @@
         <span>{viewer.name} · {viewer.width}×{viewer.height} · {formatFileSize(viewer.blob.size)}</span>
         <span>
           <button type="button" onclick={() => viewer && renameDrawing(viewer)}>Rename</button>
-          <button type="button" onclick={() => viewer && downloadCrop(viewer.blob, null, viewer.name)} title="Download original image">Download</button>
+          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, null, 'Original image')} title="Copy original image to clipboard">Copy image</button>
+          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, null, viewer.name)} title="Download original image">Download</button>
           <button
             type="button"
             onclick={() => (showTagOverlays = !showTagOverlays)}

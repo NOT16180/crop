@@ -130,3 +130,75 @@ export async function rebuildThumbnail(drawing: DrawingRecord): Promise<DrawingR
 export async function deleteDrawings(ids: string[]): Promise<void> {
   await db.drawings.bulkDelete(ids)
 }
+
+/**
+ * Extract a crop from an image blob as a PNG blob.
+ * If box is null, converts the full image to PNG (required by Clipboard API).
+ */
+export async function getCropAsPngBlob(blob: Blob, box: Rect | null): Promise<Blob> {
+  let bitmap: ImageBitmap
+  if (box) {
+    const cropX = Math.max(0, Math.round(box[0]))
+    const cropY = Math.max(0, Math.round(box[1]))
+    const cropW = Math.max(1, Math.round(box[2]))
+    const cropH = Math.max(1, Math.round(box[3]))
+    bitmap = await createImageBitmap(blob, cropX, cropY, cropW, cropH)
+  } else {
+    bitmap = await createImageBitmap(blob)
+  }
+  try {
+    const width = bitmap.width
+    const height = bitmap.height
+    const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(width, height)
+      : Object.assign(document.createElement('canvas'), { width, height })
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Canvas is unavailable')
+    context.drawImage(bitmap, 0, 0)
+    return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
+      ? await canvas.convertToBlob({ type: 'image/png' })
+      : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
+          (result) => result ? resolve(result) : reject(new Error('Could not export crop')),
+          'image/png',
+        ))
+  } finally {
+    bitmap.close()
+  }
+}
+
+/**
+ * Copy a crop or image directly to the system clipboard as a PNG image.
+ */
+export async function copyCropToClipboard(blob: Blob, box: Rect | null): Promise<void> {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+    throw new Error('Clipboard image writing is not supported by this browser.')
+  }
+  const pngBlob = await getCropAsPngBlob(blob, box)
+  await navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': pngBlob }),
+  ])
+}
+
+/**
+ * Trigger browser download for a crop or full image.
+ */
+export async function downloadCrop(blob: Blob, box: Rect | null, baseName: string): Promise<void> {
+  let resultBlob: Blob
+  let fileName: string
+  if (box) {
+    resultBlob = await getCropAsPngBlob(blob, box)
+    fileName = `${baseName.replace(/\.[^.]+$/, '')}-crop.png`
+  } else {
+    resultBlob = blob
+    fileName = baseName
+  }
+  const url = URL.createObjectURL(resultBlob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  document.body.append(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+

@@ -1,0 +1,52 @@
+<script lang="ts">
+  type Props = {
+    menuOpen: boolean
+    theme: 'dark' | 'light'
+    showHelp: boolean
+    accountSession: { user: { email: string; name: string } } | null
+    feedbackUrl: string
+    onclose: () => void
+    ontoggletheme: () => void
+    ontogglehelp: () => void
+    onopenaccount: () => void
+    onbackup: () => void
+    onrestore: () => void
+  }
+
+  let {
+    menuOpen,
+    theme,
+    showHelp,
+    accountSession,
+    feedbackUrl,
+    onclose,
+    ontoggletheme,
+    ontogglehelp,
+    onopenaccount,
+    onbackup,
+    onrestore,
+  }: Props = $props()
+
+  function onMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') onclose()
+  }
+</script>
+
+{#if menuOpen}
+  <button class="menu-backdrop" type="button" aria-label="Close menu" onclick={onclose} onkeydown={onMenuKeydown}></button>
+{/if}
+<aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label="Main menu" aria-hidden={!menuOpen} inert={!menuOpen}>
+  <div class="side-menu-heading"><strong>MENU</strong><button type="button" onclick={onclose} aria-label="Close menu">×</button></div>
+  <button
+    class="theme-toggle"
+    onclick={() => { ontoggletheme(); onclose() }}
+    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+    aria-pressed={theme === 'light'}
+  >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+  <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); onclose() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
+  <button type="button" onclick={onopenaccount}>{accountSession ? `Account · ${accountSession.user.email}` : 'Sign in'}</button>
+  <button type="button" onclick={() => { onbackup(); onclose() }} title="Download a ZIP copy of your library to this device">Backup</button>
+  <button type="button" onclick={() => { onrestore(); onclose() }} title="Merge a Crop backup into this library">Restore</button>
+  <a class="support-link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">Feedback</a>
+  <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+</aside>

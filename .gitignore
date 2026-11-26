@@ -1,4 +1,5 @@
 node_modules/
 dist/
 *.local
+.dev.vars
 .DS_Store

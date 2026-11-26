@@ -1,8 +1,30 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "crop",
-  "compatibility_date": "2026-10-08",
-  "assets": {
-    "directory": "./dist"
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "crop",
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-10-08",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"secrets": {
+		"required": [
+			"BETTER_AUTH_SECRET",
+			"RESEND_API_KEY"
+		]
+	},
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "crop_auth",
+			"database_name": "crop-auth",
+			"database_id": "bc73106b-fa72-43fe-99ec-9328b9bc3ec2",
+			"migrations_dir": "migrations"
+		}
+	]
 }
