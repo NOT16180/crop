@@ -1047,6 +1047,7 @@
       {/if}
     </div>
   </form>
+  <button type="button" class="add-image-button" onclick={() => fileInput.click()} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add images</button>
   {#if menuOpen}
     <button class="menu-backdrop" type="button" aria-label="Close menu" onclick={() => (menuOpen = false)} onkeydown={onMenuKeydown}></button>
   {/if}
@@ -1059,7 +1060,6 @@
       aria-pressed={theme === 'light'}
     >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
     <button type="button" aria-pressed={showHelp} onclick={() => { showHelp = !showHelp; menuOpen = false }}>{showHelp ? 'Back to library' : 'How to use'}</button>
-    <button type="button" onclick={() => { fileInput.click(); menuOpen = false }} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add images</button>
     <button type="button" onclick={() => { backupLibrary(); menuOpen = false }} title="Download a ZIP copy of your library to this device">Backup</button>
     <button type="button" onclick={() => { backupInput.click(); menuOpen = false }} title="Merge a Crop backup into this library">Restore</button>
     <a class="support-link" href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">Feedback</a>
