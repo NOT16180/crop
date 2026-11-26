@@ -1238,13 +1238,14 @@
 {#if viewer}
   <div class="viewer" bind:this={viewerDialog} role="dialog" aria-modal="true" aria-label={viewer.name} tabindex="-1">
     <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
-    <figure style="max-height: calc(100dvh - 24px); overflow: auto" aria-label="Image and tag controls">
+    <figure aria-label="Image and tag controls">
       <div class="viewer-toolbar">
         <div class="zoom-controls" aria-label="Image zoom controls">
           <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
           <span aria-live="polite">{Math.round(zoom * 100)}%</span>
           <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in">+</button>
           <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom">Reset</button>
+          <button type="button" class="viewer-close-btn" onclick={closeViewer} aria-label="Close viewer" title="Close viewer">×</button>
         </div>
         {#if viewerBox}
           <div class="viewer-active-crop" aria-label="Focused crop actions">
@@ -1268,8 +1269,8 @@
           src={viewerUrl}
           alt={viewer.name}
           draggable="false"
-          style:max-width={`calc((100vw - 32px) * ${zoom})`}
-          style:max-height={`calc((100dvh - 260px) * ${zoom})`}
+          style:max-width={`calc((100vw - 24px) * ${zoom})`}
+          style:max-height={`calc(max(220px, 100dvh - 240px) * ${zoom})`}
         />
         {#if showTagOverlays}
           {#each viewer.tags as tag (tag.id)}
@@ -1410,9 +1411,11 @@
                   />
                   <strong>{group.label}</strong><span>({group.tags.length})</span>
                 </label>
-                <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
-                <button type="button" class="merge-tag" onclick={() => mergeTagGroup(group.label)}>Merge into…</button>
-                <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>Delete everywhere</button>
+                <div class="tag-group-actions">
+                  <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
+                  <button type="button" class="merge-tag" onclick={() => mergeTagGroup(group.label)}>Merge into…</button>
+                  <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>Delete everywhere</button>
+                </div>
                 {#each group.tags as tag (tag.id)}
                   <div class="tag-entry">
                     <label>
@@ -1443,8 +1446,8 @@
       {/if}
 
       <figcaption>
-        <span>{viewer.name} · {viewer.width}×{viewer.height} · {formatFileSize(viewer.blob.size)}</span>
-        <span>
+        <span class="viewer-meta">{viewer.name} · {viewer.width}×{viewer.height} · {formatFileSize(viewer.blob.size)}</span>
+        <span class="viewer-actions">
           <button type="button" onclick={() => viewer && renameDrawing(viewer)}>Rename</button>
           <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, null, 'Original image')} title="Copy original image to clipboard">Copy image</button>
           <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, null, viewer.name)} title="Download original image">Download</button>

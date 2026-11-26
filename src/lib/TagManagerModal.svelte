@@ -222,6 +222,7 @@
   .tag-manager-dialog {
     position: relative;
     z-index: 1;
+    margin: 0;
     width: min(580px, 100%);
     max-height: calc(100dvh - 48px);
     display: flex;
@@ -340,7 +341,7 @@
   }
   .btn-action:hover:not(:disabled) {
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
   }
   .btn-action.danger {
     color: var(--danger, #c62828);
@@ -414,6 +415,68 @@
   }
   .confirm-merge-btn {
     background: var(--accent) !important;
-    color: #fff !important;
+    color: var(--bg) !important;
+  }
+
+  @media (max-width: 640px) {
+    .tag-manager-layer {
+      padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    }
+    .tag-manager-dialog {
+      max-height: calc(100dvh - 16px);
+      padding: 14px;
+    }
+    .tag-manager-toolbar {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tag-filter-input {
+      font-size: 1rem;
+    }
+    .tag-manager-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 10px;
+    }
+    .tag-info {
+      flex-wrap: wrap;
+      gap: 4px 10px;
+    }
+    .tag-name {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .tag-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      width: 100%;
+    }
+    .btn-action {
+      padding: 8px 6px;
+      font-size: 0.78rem;
+      text-align: center;
+    }
+    .tag-edit-form {
+      flex-wrap: wrap;
+    }
+    .tag-edit-form input {
+      flex: 1 0 100%;
+      font-size: 1rem;
+    }
+    .tag-edit-form button {
+      flex: 1;
+    }
+    .merge-controls select,
+    .merge-controls input {
+      flex: 1 0 100%;
+      width: 100%;
+      min-width: 0;
+      font-size: 1rem;
+    }
+    .merge-controls button {
+      flex: 1;
+    }
   }
 </style>

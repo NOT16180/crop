@@ -82,7 +82,9 @@ header {
     align-items: stretch;
     gap: 10px;
     width: min(300px, 86vw);
-    padding: 18px;
+    padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border-right: 1px solid var(--border);
     background: var(--surface);
     transform: translateX(-101%);
@@ -90,7 +92,7 @@ header {
 }
 
 .side-menu.open { transform: translateX(0); }
-.side-menu > button, .side-menu > .support-link { text-align: left; }
+.side-menu > button, .side-menu > .support-link { text-align: left; overflow-wrap: anywhere; }
 .side-menu .support-link { padding: 8px 10px; }
 .side-menu-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .side-menu-heading button { min-width: 36px; }
@@ -106,7 +108,7 @@ header {
 
 .account-layer { position: fixed; z-index: 140; inset: 0; display: grid; place-items: center; padding: 16px; }
 .account-scrim { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: rgba(0, 0, 0, .55); }
-.account-dialog { position: relative; z-index: 1; width: min(440px, 100%); padding: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.account-dialog { position: relative; z-index: 1; margin: 0; width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
 .account-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .account-heading h2 { margin: 0; font-size: 1.1rem; }
 .account-form { display: grid; gap: 10px; margin-top: 18px; }
@@ -286,6 +288,7 @@ label {
 
 .status.notice {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
 }
@@ -544,6 +547,9 @@ main {
     position: relative;
     margin: 0;
     max-width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -570,11 +576,12 @@ main {
 
 .crop-btn:hover {
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
 }
 
 .viewer-active-crop {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     gap: 8px;
@@ -604,7 +611,7 @@ main {
 
 .viewer-active-crop button:hover {
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
 }
 
 .viewer-active-crop button.clear-crop-btn {
@@ -630,8 +637,8 @@ main {
     position: relative;
     outline: 1px solid var(--image-border);
     outline-offset: -1px;
-    align-self: center;
-    max-width: 100%;
+    margin-inline: auto;
+    max-width: max-content;
     line-height: 0;
     cursor: crosshair;
     touch-action: none;
@@ -645,6 +652,13 @@ main {
     gap: 8px;
     padding: 4px 0;
     background: var(--surface);
+}
+
+.viewer-close-btn {
+    margin-left: auto;
+    min-width: 36px;
+    font-size: 1.15rem;
+    line-height: 1;
 }
 
 .viewer .tag-form { flex: 0 0 auto; }
@@ -913,12 +927,23 @@ details[open] > summary::before {
 
 .tag-entry {
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
     padding-left: 24px;
 }
 
+.tag-group-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 24px;
+    margin-bottom: 4px;
+}
+
 .rename-tag,
+.merge-tag,
 .delete-tag {
-    margin: 0 0 4px 24px;
+    margin: 0;
     padding: 2px 8px;
     font-size: 0.8rem;
 }
@@ -928,9 +953,6 @@ details[open] > summary::before {
 }
 
 .merge-tag {
-    margin: 0 0 4px 4px;
-    padding: 2px 8px;
-    font-size: 0.8rem;
     color: var(--text);
 }
 
@@ -981,10 +1003,11 @@ details[open] > summary::before {
 .tag-filter-option {
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 10px;
     padding: 8px 10px;
     border-bottom: 1px solid var(--border);
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
     cursor: pointer;
 }
 
@@ -1055,7 +1078,7 @@ details[open] > summary::before {
 
 .tag-manager-nav-btn:hover {
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
 }
 
 .folder-list {
@@ -1107,7 +1130,7 @@ details[open] > summary::before {
 
 .folder-entry {
     display: grid;
-    grid-template-columns: minmax(100px, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .folder-entry .folder-select {
@@ -1154,6 +1177,10 @@ details[open] > summary::before {
         padding: 10px 12px;
     }
 
+    header .add-image-button {
+        margin-left: auto;
+    }
+
     header .search-form {
         order: 10;
         flex: 1 0 100%;
@@ -1181,9 +1208,21 @@ details[open] > summary::before {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 10px 12px;
     color: var(--muted);
     font-size: 0.9rem;
+}
+
+.viewer-meta {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.viewer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
 @media (max-width: 640px) {
@@ -1198,21 +1237,49 @@ details[open] > summary::before {
         font-size: 1rem;
     }
 
+    header .add-image-button {
+        margin-left: auto;
+        white-space: nowrap;
+    }
+
     header .search-form {
         order: 10;
         flex: 1 0 100%;
     }
 
-    .menu-toggle { margin-left: auto; }
+    input[type="search"],
+    input[type="text"],
+    input[type="email"],
+    select {
+        font-size: 1rem;
+    }
+
+    .data-warning {
+        padding: 8px 10px;
+    }
+
+    .storage-usage {
+        display: block;
+        float: none;
+        margin: 4px 0 0;
+        white-space: normal;
+    }
+
+    .install-line button {
+        display: inline-block;
+        margin: 6px 0 0;
+    }
 
     .library-nav,
     .folder-list,
     .tag-list {
         padding: 7px 8px;
+        gap: 6px;
     }
 
     .folder-menu,
-    .tag-filter-menu {
+    .tag-filter-menu,
+    .tag-manager-nav-btn {
         min-width: 0;
         width: 100%;
     }
@@ -1225,13 +1292,18 @@ details[open] > summary::before {
 
     .folder-menu-content,
     .tag-filter-content {
-        position: fixed;
-        top: auto;
-        left: 8px;
-        right: 8px;
-        width: auto;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        width: 100%;
         min-width: 0;
-        max-height: min(55dvh, 420px);
+        max-height: min(55dvh, 360px);
+    }
+
+    .help-page {
+        margin: 8px auto;
+        padding: 14px;
     }
 
     main {
@@ -1242,16 +1314,29 @@ details[open] > summary::before {
 
     .drawing-meta {
         align-items: flex-start;
+        flex-wrap: wrap;
         min-height: 40px;
     }
 
     .drawing-name {
+        flex: 1 1 100%;
         white-space: normal;
         overflow-wrap: anywhere;
         display: -webkit-box;
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
         line-clamp: 2;
+    }
+
+    .crop-actions {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .crop-btn {
+        flex: 1;
+        padding: 6px 8px;
+        font-size: 0.78rem;
     }
 
     .library-actions {
@@ -1265,9 +1350,37 @@ details[open] > summary::before {
         min-width: 0;
     }
 
-    .library-actions select {
+    .library-actions > span {
+        grid-column: 1 / -1;
+        align-self: center;
+        font-size: 0.85rem;
+        color: var(--muted);
+    }
+
+    .library-actions label {
+        width: 100%;
+        min-width: 0;
+        justify-content: space-between;
+    }
+
+    .library-actions label select {
+        flex: 1;
         max-width: 100%;
         min-width: 0;
+        width: 100%;
+    }
+
+    .bulk-tag-form .tag-input-wrap,
+    .bulk-tag-form button[type="submit"] {
+        grid-column: 1 / -1;
+    }
+
+    .account-layer {
+        padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    }
+
+    .account-dialog {
+        padding: 16px;
     }
 
     .viewer {
@@ -1278,19 +1391,35 @@ details[open] > summary::before {
     .viewer figure {
         width: 100%;
         max-width: 100%;
+        max-height: calc(100dvh - max(12px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
         gap: 6px;
     }
 
     .viewer-toolbar {
         position: sticky;
         top: 0;
+        width: 100%;
     }
 
-    .viewer-toolbar { width: 100%; }
-    .zoom-controls { flex-wrap: wrap; }
+    .zoom-controls {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
 
     .tag-menu {
         width: 100%;
+    }
+
+    .tag-group-actions {
+        padding-left: 0;
+    }
+
+    .tag-entry {
+        padding-left: 8px;
+    }
+
+    .tag-entry-actions {
+        flex-wrap: wrap;
     }
 
     .viewer figcaption {
@@ -1298,13 +1427,15 @@ details[open] > summary::before {
         flex-wrap: wrap;
     }
 
-    .viewer figcaption > span {
+    .viewer-meta {
         flex-basis: 100%;
-        overflow-wrap: anywhere;
     }
 
-    .viewer figcaption button {
-        flex: 1;
+    .viewer-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
     }
 
     .empty {
@@ -1320,10 +1451,27 @@ details[open] > summary::before {
         flex-basis: 100%;
     }
 
-    button,
+    .tag-form > button {
+        flex: 1 1 auto;
+    }
+
+    button:not(.clear-search):not(.resize-handle):not(.tag-copy-btn):not(.clear-crop-btn):not(.crop-btn):not(.close-btn),
     select,
     summary {
         min-height: 42px;
+    }
+
+    .clear-search {
+        width: 34px;
+        height: 34px;
+        min-height: 0;
+    }
+
+    .tag-box em button,
+    .whole-tags span button {
+        min-height: 24px;
+        min-width: 24px;
+        padding: 2px 4px;
     }
 
     .resize-handle {
@@ -1340,21 +1488,34 @@ details[open] > summary::before {
 
 }
 
+@media (max-width: 420px) {
+    header {
+        gap: 6px;
+    }
+
+    header button {
+        padding: 6px 9px;
+        font-size: 0.85rem;
+    }
+}
+
 @media (max-width: 380px) {
-    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 
     .zoom-controls {
         gap: 5px;
     }
 
     .tag-form > button {
-        flex: 1;
+        flex: 1 1 45%;
     }
 }
 
-@media (max-width: 360px) {
-    .grid { grid-template-columns: minmax(0, 1fr); }
-    .library-actions { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 340px) {
+    .library-actions,
+    .viewer-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 @media (max-height: 520px) and (orientation: landscape) {
@@ -1363,7 +1524,7 @@ details[open] > summary::before {
     }
 
     .viewer figure {
-        max-height: calc(100dvh - 8px) !important;
+        max-height: calc(100dvh - 8px);
         gap: 4px;
     }
 
