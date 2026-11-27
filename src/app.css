@@ -562,11 +562,15 @@ main {
     margin: 0;
     max-width: 100%;
     max-height: calc(100dvh - 24px);
+    padding: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
     overflow: auto;
     overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .crop-actions {
@@ -1170,9 +1174,15 @@ details[open] > summary::before {
 }
 
 .drawing-folder select {
-    padding: 6px 8px;
+    padding: 6px 28px 6px 10px;
     border: 1px solid var(--border);
-    background: var(--surface);
+    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--surface);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23777777' d='M2 4l4 4 4-4z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
     color: var(--text);
     font: inherit;
 }
@@ -1404,13 +1414,31 @@ details[open] > summary::before {
         width: 100%;
         max-width: 100%;
         max-height: calc(100dvh - max(12px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
-        gap: 6px;
+        padding: 10px 10px calc(16px + env(safe-area-inset-bottom));
+        gap: 8px;
     }
 
     .viewer-toolbar {
         position: sticky;
-        top: 0;
+        top: -10px;
+        margin: -10px -10px 0;
+        padding: 8px 10px 6px;
+        width: calc(100% + 20px);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .viewer-image img {
+        max-height: min(50dvh, calc(100dvh - 300px)) !important;
+    }
+
+    .drawing-folder {
         width: 100%;
+        justify-content: space-between;
+    }
+
+    .drawing-folder select {
+        flex: 1;
+        min-width: 0;
     }
 
     .zoom-controls {
@@ -1481,22 +1509,28 @@ details[open] > summary::before {
 
     .tag-box em button,
     .whole-tags span button {
-        min-height: 24px;
-        min-width: 24px;
-        padding: 2px 4px;
+        min-height: 20px;
+        min-width: 20px;
+        padding: 1px 3px;
     }
 
     .resize-handle {
-        width: 22px;
-        height: 22px;
+        width: 10px;
+        height: 10px;
         min-width: 0;
         min-height: 0;
     }
 
-    .resize-handle.nw { top: -11px; left: -11px; }
-    .resize-handle.ne { top: -11px; right: -11px; }
-    .resize-handle.sw { bottom: -11px; left: -11px; }
-    .resize-handle.se { right: -11px; bottom: -11px; }
+    .resize-handle::after {
+        content: "";
+        position: absolute;
+        inset: -8px;
+    }
+
+    .resize-handle.nw { top: -5px; left: -5px; }
+    .resize-handle.ne { top: -5px; right: -5px; }
+    .resize-handle.sw { bottom: -5px; left: -5px; }
+    .resize-handle.se { right: -5px; bottom: -5px; }
 
 }
 
