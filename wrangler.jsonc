@@ -30,5 +30,11 @@
 			"database_id": "bc73106b-fa72-43fe-99ec-9328b9bc3ec2",
 			"migrations_dir": "migrations"
 		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "BLOBS",
+			"bucket_name": "crop-blobs"
+		}
 	]
 }
