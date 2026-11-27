@@ -586,3 +586,52 @@ export async function handleSyncRequest(request: Request, deps: SyncHandlerDeps)
 
   return jsonNoStore({ error: 'Not found' }, 404)
 }
+
+/**
+ * Permanently remove all cloud blobs (R2) and database records (D1) belonging
+ * to a single user account. Never touches any other user's rows or objects.
+ */
+export async function deleteUserAccountData(deps: {
+  db: D1DatabaseLike
+  blobs?: R2BucketLike
+  userId: string
+  userEmail?: string
+}): Promise<{ deletedBlobs: number }> {
+  let deletedBlobs = 0
+  if (deps.blobs) {
+    const blobRows = await deps.db
+      .prepare('SELECT drawing_id, kind FROM sync_blob WHERE user_id = ?')
+      .bind(deps.userId)
+      .all<{ drawing_id: string; kind: string }>()
+
+    const keys: string[] = []
+    for (const row of blobRows.results) {
+      if (isValidSyncId(row.drawing_id) && isValidBlobKind(row.kind)) {
+        keys.push(r2BlobKey(deps.userId, row.drawing_id, row.kind))
+      }
+    }
+
+    for (let i = 0; i < keys.length; i += 500) {
+      const chunk = keys.slice(i, i + 500)
+      await deps.blobs.delete(chunk)
+      deletedBlobs += chunk.length
+    }
+  }
+
+  // Delete child rows explicitly in case foreign_keys enforcement is disabled.
+  await deps.db.prepare('DELETE FROM sync_blob WHERE user_id = ?').bind(deps.userId).run()
+  await deps.db.prepare('DELETE FROM sync_drawing WHERE user_id = ?').bind(deps.userId).run()
+  await deps.db.prepare('DELETE FROM sync_folder WHERE user_id = ?').bind(deps.userId).run()
+  await deps.db.prepare('DELETE FROM user_storage WHERE user_id = ?').bind(deps.userId).run()
+  await deps.db.prepare('DELETE FROM session WHERE user_id = ?').bind(deps.userId).run()
+  await deps.db.prepare('DELETE FROM account WHERE user_id = ?').bind(deps.userId).run()
+  if (deps.userEmail) {
+    await deps.db
+      .prepare('DELETE FROM verification WHERE value LIKE ?')
+      .bind(`%"email":"${deps.userEmail}"%`)
+      .run()
+  }
+  await deps.db.prepare('DELETE FROM user WHERE id = ?').bind(deps.userId).run()
+
+  return { deletedBlobs }
+}

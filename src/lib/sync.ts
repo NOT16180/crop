@@ -659,3 +659,20 @@ export function scheduleSync(user: SyncUser | null, options: SyncOptions = {}, d
     void syncNow(user, options)
   }, delayMs)
 }
+
+export async function deleteAccountAndCloudData(): Promise<boolean> {
+  const res = await fetch('/api/sync/account', {
+    method: 'DELETE',
+    signal: AbortSignal.timeout(20_000),
+  })
+  if (!res.ok) return false
+  if (debounceTimer) {
+    window.clearTimeout(debounceTimer)
+    debounceTimer = undefined
+  }
+  await db.transaction('rw', db.syncMeta, db.syncOutbox, async () => {
+    await db.syncMeta.delete('state')
+    await db.syncOutbox.clear()
+  })
+  return true
+}

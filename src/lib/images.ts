@@ -1,8 +1,10 @@
 import { db, type DrawingRecord, type Rect } from './db'
-import { isAcceptedImage } from './image-validation'
-export { isAcceptedImage } from './image-validation'
+import { computeScaledDimensions, isAcceptedImage } from './image-validation'
+export { computeScaledDimensions, isAcceptedImage } from './image-validation'
 
 const THUMB_SIZE = 480
+export const WEBP_MAX_DIMENSION = 2400
+const WEBP_QUALITY = 0.86
 
 export interface ImportFailure {
   name: string
@@ -12,6 +14,10 @@ export interface ImportFailure {
 export interface ImportResult {
   created: DrawingRecord[]
   failures: ImportFailure[]
+}
+
+export interface ImportOptions {
+  compressWebp?: boolean
 }
 
 /** Keep a box inside the picture: a rounded drag can otherwise land one pixel outside. */
@@ -31,6 +37,27 @@ function sniffImageType(bytes: Uint8Array): string {
   return ''
 }
 
+async function encodeCanvasBlob(
+  bitmap: ImageBitmap,
+  width: number,
+  height: number,
+  type: string,
+  quality: number,
+): Promise<Blob> {
+  const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
+    ? new OffscreenCanvas(width, height)
+    : Object.assign(document.createElement('canvas'), { width, height })
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Image canvas is unavailable')
+  context.drawImage(bitmap, 0, 0, width, height)
+  return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
+    ? await canvas.convertToBlob({ type, quality })
+    : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error('Could not encode image')),
+        type, quality,
+      ))
+}
+
 /**
  * Encode a thumbnail and check that the result can actually be decoded again.
  * A browser can hand back an encoded blob the renderer then refuses to read;
@@ -38,20 +65,9 @@ function sniffImageType(bytes: Uint8Array): string {
  * fall back to PNG rather than trusting the requested format.
  */
 async function encodeThumb(bitmap: ImageBitmap, width: number, height: number): Promise<Blob> {
-  const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
-    ? new OffscreenCanvas(width, height)
-    : Object.assign(document.createElement('canvas'), { width, height })
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Image canvas is unavailable')
-  context.drawImage(bitmap, 0, 0, width, height)
   for (const type of ['image/webp', 'image/png']) {
     try {
-      const candidate = typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
-        ? await canvas.convertToBlob({ type, quality: 0.82 })
-        : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
-            (blob) => blob ? resolve(blob) : reject(new Error('Could not encode a thumbnail')),
-            type, 0.82,
-          ))
+      const candidate = await encodeCanvasBlob(bitmap, width, height, type, 0.82)
       const bytes = new Uint8Array(await candidate.slice(0, 16).arrayBuffer())
       if (sniffImageType(bytes) !== type) continue
       const check = await createImageBitmap(candidate)
@@ -75,22 +91,52 @@ async function makeThumbnail(
   return { thumb, width, height }
 }
 
+/**
+ * Re-encode an imported image to high-quality WebP (capped at 2400 px on the
+ * longest side) when it actually saves space and decodes cleanly. Otherwise
+ * keep the original file untouched.
+ */
+async function optimizeAsWebp(
+  bitmap: ImageBitmap,
+  original: File,
+): Promise<{ blob: Blob; width: number; height: number }> {
+  const target = computeScaledDimensions(bitmap.width, bitmap.height, WEBP_MAX_DIMENSION)
+  try {
+    const candidate = await encodeCanvasBlob(bitmap, target.width, target.height, 'image/webp', WEBP_QUALITY)
+    if (candidate.size >= original.size) {
+      return { blob: original, width: bitmap.width, height: bitmap.height }
+    }
+    const bytes = new Uint8Array(await candidate.slice(0, 16).arrayBuffer())
+    if (sniffImageType(bytes) !== 'image/webp') {
+      return { blob: original, width: bitmap.width, height: bitmap.height }
+    }
+    const check = await createImageBitmap(candidate)
+    check.close()
+    return { blob: candidate, width: target.width, height: target.height }
+  } catch {
+    return { blob: original, width: bitmap.width, height: bitmap.height }
+  }
+}
+
 /** Add files to the library and return the created records. */
-export async function importFiles(files: File[]): Promise<ImportResult> {
+export async function importFiles(files: File[], options: ImportOptions = {}): Promise<ImportResult> {
   const created: DrawingRecord[] = []
   const failures: ImportFailure[] = []
   for (const file of files.filter(isAcceptedImage)) {
     let bitmap: ImageBitmap | undefined
     try {
       bitmap = await createImageBitmap(file)
-      const { thumb, width, height } = await makeThumbnail(bitmap)
+      const { thumb } = await makeThumbnail(bitmap)
+      const stored = options.compressWebp
+        ? await optimizeAsWebp(bitmap, file)
+        : { blob: file, width: bitmap.width, height: bitmap.height }
       const record: DrawingRecord = {
         id: crypto.randomUUID(),
         name: file.name,
         createdAt: Date.now(),
-        width,
-        height,
-        blob: file,
+        width: stored.width,
+        height: stored.height,
+        blob: stored.blob,
         thumb,
         tags: [],
       }
@@ -201,4 +247,3 @@ export async function downloadCrop(blob: Blob, box: Rect | null, baseName: strin
   anchor.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
-

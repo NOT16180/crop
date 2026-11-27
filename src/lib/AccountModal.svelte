@@ -8,25 +8,32 @@
     open: boolean
     session: { user: { id: string; email: string; name: string } } | null
     syncState: SyncSnapshot | null
+    compressWebp: boolean
     initialMessage?: string
     onclose: () => void
     onsignout: () => Promise<boolean>
+    ondeleteaccount: () => Promise<boolean>
     onsyncnow: (mode?: 'merge' | 'replace') => Promise<void>
+    ontogglewebp: () => void
   }
 
   let {
     open,
     session,
     syncState,
+    compressWebp,
     initialMessage = '',
     onclose,
     onsignout,
+    ondeleteaccount,
     onsyncnow,
+    ontogglewebp,
   }: Props = $props()
 
   let email = $state('')
   let message = $state('')
   let busy = $state(false)
+  let confirmDelete = $state(false)
   let emailInput = $state<HTMLInputElement | null>(null)
   let signOutButton = $state<HTMLButtonElement | null>(null)
   let closeButton = $state<HTMLButtonElement | null>(null)
@@ -68,6 +75,7 @@
     if (open) {
       message = initialMessage
       busy = false
+      confirmDelete = false
       void tick().then(() => {
         if (session) signOutButton?.focus()
         else (emailInput ?? closeButton)?.focus()
@@ -75,6 +83,7 @@
     } else {
       message = ''
       busy = false
+      confirmDelete = false
     }
   })
 
@@ -102,6 +111,7 @@
     if (busy) return
     busy = true
     message = ''
+    confirmDelete = false
     try {
       const ok = await onsignout()
       message = ok
@@ -109,6 +119,25 @@
         : 'Could not sign out right now. Please try again.'
     } catch {
       message = 'Could not sign out right now. Please try again.'
+    } finally {
+      busy = false
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (busy) return
+    busy = true
+    message = ''
+    try {
+      const ok = await ondeleteaccount()
+      if (ok) {
+        confirmDelete = false
+        message = 'Account and cloud data permanently deleted. Your local library stays on this device.'
+      } else {
+        message = 'Could not delete your account right now. Please try again.'
+      }
+    } catch {
+      message = 'Could not delete your account right now. Please try again.'
     } finally {
       busy = false
     }
@@ -148,6 +177,11 @@
               </div>
             {/if}
 
+            <label class="account-option">
+              <input type="checkbox" checked={compressWebp} onchange={ontogglewebp} />
+              <span>Compress new imports to WebP (max 2400px) to fit 4–5× more drawings in 100 MB</span>
+            </label>
+
             {#if syncState.quotaBlockedCount > 0}
               <p class="account-sync-warning" role="status">
                 {syncState.quotaBlockedCount} drawing{syncState.quotaBlockedCount === 1 ? '' : 's'} kept local only — cloud storage is full. Delete drawings to free cloud space; local work and Backup/Restore remain unlimited.
@@ -182,6 +216,24 @@
             {busy ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
+
+        <div class="account-danger">
+          {#if confirmDelete}
+            <p class="account-sync-warning">
+              <strong>Delete your account permanently?</strong> All cloud copies (folders, drawings, images, and sessions) will be erased from Cloudflare. Your local library on this device stays untouched.
+            </p>
+            <div class="account-actions">
+              <button type="button" class="danger-btn" disabled={busy} onclick={handleDeleteAccount}>
+                {busy ? 'Deleting…' : 'Confirm permanent deletion'}
+              </button>
+              <button type="button" disabled={busy} onclick={() => (confirmDelete = false)}>Cancel</button>
+            </div>
+          {:else}
+            <button type="button" class="danger-link" disabled={busy} onclick={() => (confirmDelete = true)}>
+              Delete account & cloud data
+            </button>
+          {/if}
+        </div>
       {:else}
         <p>Sign in with an email link. No password needed. Your library works offline and syncs across devices when signed in.</p>
         <form class="account-form" onsubmit={handleSendSignInLink}>
@@ -190,6 +242,7 @@
           <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send sign-in link'}</button>
         </form>
       {/if}
+      <p class="account-privacy">No ads, no tracking, no AI training. Cloud storage is used solely to sync your library and can be deleted anytime.</p>
       {#if message}<p class="account-message" role="status">{message}</p>{/if}
     </dialog>
   </div>

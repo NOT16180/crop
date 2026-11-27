@@ -2,11 +2,13 @@
   type Props = {
     menuOpen: boolean
     theme: 'dark' | 'light'
+    compressWebp: boolean
     showHelp: boolean
     accountSession: { user: { email: string; name: string } } | null
     feedbackUrl: string
     onclose: () => void
     ontoggletheme: () => void
+    ontogglewebp: () => void
     ontogglehelp: () => void
     onopenaccount: () => void
     onopentagmanager: () => void
@@ -17,11 +19,13 @@
   let {
     menuOpen,
     theme,
+    compressWebp,
     showHelp,
     accountSession,
     feedbackUrl,
     onclose,
     ontoggletheme,
+    ontogglewebp,
     ontogglehelp,
     onopenaccount,
     onopentagmanager,
@@ -45,6 +49,12 @@
     aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
     aria-pressed={theme === 'light'}
   >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+  <button
+    type="button"
+    aria-pressed={compressWebp}
+    onclick={ontogglewebp}
+    title="Re-encode new imports to high-quality WebP (max 2400px) to fit 4–5x more drawings in 100 MB"
+  >WebP compression: {compressWebp ? 'On' : 'Off'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); onclose() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
   <button type="button" onclick={onopenaccount}>{accountSession ? `Account · ${accountSession.user.email}` : 'Sign in'}</button>
   <button type="button" onclick={() => { onopentagmanager(); onclose() }}>Tag manager</button>

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
-import { isAcceptedImage } from '../src/lib/image-validation.ts'
+import { computeScaledDimensions, isAcceptedImage } from '../src/lib/image-validation.ts'
 import { deduplicateTags, renameOrMergeTag, computeTagStats, areBoxesEqual } from '../src/lib/tags.ts'
 
 const folders = new Set(['folder-1'])
@@ -119,4 +119,10 @@ test('renaming or merging a tag into an existing tag deduplicates properly', () 
   assert.equal(stats[0].label, 'lumiere')
   assert.equal(stats[0].count, 2) // exactly 2, not 3!
   assert.equal(stats[0].imageCount, 2)
+})
+
+test('computeScaledDimensions preserves small images and scales oversized images proportionally', () => {
+  assert.deepEqual(computeScaledDimensions(1200, 800, 2400), { width: 1200, height: 800 })
+  assert.deepEqual(computeScaledDimensions(4800, 2400, 2400), { width: 2400, height: 1200 })
+  assert.deepEqual(computeScaledDimensions(1200, 4800, 2400), { width: 600, height: 2400 })
 })

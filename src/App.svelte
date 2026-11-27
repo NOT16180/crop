@@ -7,6 +7,7 @@
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
   import { formatStorageBytes } from './lib/sync-protocol'
   import {
+    deleteAccountAndCloudData,
     getSyncSnapshot,
     queueDrawingDeletes,
     queueDrawingUpsert,
@@ -46,6 +47,7 @@
   let dragging = $state(false)
   let error = $state('')
   let theme = $state<'dark' | 'light'>('dark')
+  let compressWebp = $state(false)
   let showHelp = $state(false)
   let menuOpen = $state(false)
   let showAccount = $state(false)
@@ -234,8 +236,10 @@
     }
     try {
       theme = window.localStorage.getItem('drawing-library-theme') === 'dark' ? 'dark' : 'light'
+      compressWebp = window.localStorage.getItem('crop-compress-webp') === '1'
     } catch {
       theme = 'light'
+      compressWebp = false
     }
     document.documentElement.dataset.theme = theme
     const persisted = await requestPersistence()
@@ -366,6 +370,27 @@
     }
   }
 
+  async function handleDeleteAccount(): Promise<boolean> {
+    try {
+      const ok = await deleteAccountAndCloudData()
+      if (!ok) return false
+      accountSession = null
+      syncState = null
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function toggleWebpCompression() {
+    compressWebp = !compressWebp
+    try {
+      window.localStorage.setItem('crop-compress-webp', compressWebp ? '1' : '0')
+    } catch {
+      // Keep the preference in memory for this session if storage is unavailable.
+    }
+  }
+
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark'
     document.documentElement.dataset.theme = theme
@@ -384,7 +409,7 @@
       return
     }
     try {
-      const result = await importFiles(valid)
+      const result = await importFiles(valid, { compressWebp })
       let position = drawings.reduce((max, drawing) => Math.max(max, drawing.position ?? -1), -1) + 1
       await Promise.all(result.created.map((drawing) => db.drawings.update(drawing.id, {
         ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
@@ -1142,11 +1167,13 @@
 <Sidebar
   {menuOpen}
   {theme}
+  {compressWebp}
   {showHelp}
   {accountSession}
   feedbackUrl={FEEDBACK_URL}
   onclose={() => (menuOpen = false)}
   ontoggletheme={toggleTheme}
+  ontogglewebp={toggleWebpCompression}
   ontogglehelp={() => (showHelp = !showHelp)}
   onopenaccount={openAccount}
   onopentagmanager={() => (showTagManager = true)}
@@ -1181,10 +1208,13 @@
   open={showAccount}
   session={accountSession}
   {syncState}
+  {compressWebp}
   initialMessage={accountMessage}
   onclose={closeAccount}
   onsignout={signOut}
+  ondeleteaccount={handleDeleteAccount}
   onsyncnow={runAccountSync}
+  ontogglewebp={toggleWebpCompression}
 />
 
 <TagManagerModal
@@ -1330,6 +1360,9 @@
 
       <h3>6. Offline mode, backups, and theme</h3>
       <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the menu.</p>
+
+      <h3>7. Privacy and open-source license</h3>
+      <p>Crop has no ads, no tracking, and never uses your artwork for AI training. When signed in, your account and synced files are stored on Cloudflare solely to sync your devices; you can permanently delete your account and cloud data anytime from <strong>Menu → Account</strong>. Crop is open source under the <strong>GNU AGPL-3.0</strong> license.</p>
 
       <h3>Feedback and support</h3>
       <p>Share ideas or bugs via the <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">GitHub feedback form</a> (public issues — avoid private artwork or personal info). If you enjoy Crop, you can also <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support it on Ko-fi</a>.</p>

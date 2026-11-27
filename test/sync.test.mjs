@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
-import { handleSyncRequest } from '../src/lib/sync-server.ts'
+import { deleteUserAccountData, handleSyncRequest } from '../src/lib/sync-server.ts'
 import { detectImageMime, formatStorageBytes, isValidSyncId, r2BlobKey } from '../src/lib/sync-protocol.ts'
 
 function makePngBytes(size) {
@@ -431,6 +431,71 @@ test('detectImageMime and blob upload reject spoofed non-image files (HTML, ZIP,
   )
   assert.equal(fetched.status, 200)
   assert.equal(fetched.headers.get('Content-Type'), 'image/jpeg')
+
+  sqlite.close()
+})
+
+test('deleteUserAccountData purges all R2 blobs and D1 records for one user without affecting other users', async () => {
+  const { sqlite, db, blobs } = setupSyncTestEnv()
+  const base = 'https://crop.example.com'
+
+  for (const userId of ['user-a', 'user-b']) {
+    await handleSyncRequest(
+      new Request(`${base}/api/sync/blobs/d1/original`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/png' },
+        body: makePngBytes(40),
+      }),
+      { db, blobs, userId },
+    )
+    await handleSyncRequest(
+      new Request(`${base}/api/sync/blobs/d1/thumb`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp' },
+        body: makeWebpBytes(20),
+      }),
+      { db, blobs, userId },
+    )
+    await handleSyncRequest(
+      new Request(`${base}/api/sync/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folders: [{ id: 'f1', name: 'Sketch', updatedAt: 1000, deletedAt: null }],
+          drawings: [{
+            id: 'd1',
+            name: 'sketch.png',
+            createdAt: 1000,
+            width: 100,
+            height: 100,
+            folderId: 'f1',
+            position: 0,
+            tags: [],
+            visibleTagIds: null,
+            updatedAt: 1000,
+            deletedAt: null,
+          }],
+        }),
+      }),
+      { db, blobs, userId },
+    )
+  }
+
+  const res = await deleteUserAccountData({ db, blobs, userId: 'user-a', userEmail: 'alice@example.com' })
+  assert.equal(res.deletedBlobs, 2)
+
+  assert.equal(blobs.store.has('users/user-a/drawings/d1/original'), false)
+  assert.equal(blobs.store.has('users/user-a/drawings/d1/thumb'), false)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM user WHERE id = ?').get('user-a').c, 0)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM sync_drawing WHERE user_id = ?').get('user-a').c, 0)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM sync_folder WHERE user_id = ?').get('user-a').c, 0)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM sync_blob WHERE user_id = ?').get('user-a').c, 0)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM user_storage WHERE user_id = ?').get('user-a').c, 0)
+
+  assert.equal(blobs.store.has('users/user-b/drawings/d1/original'), true)
+  assert.equal(blobs.store.has('users/user-b/drawings/d1/thumb'), true)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM user WHERE id = ?').get('user-b').c, 1)
+  assert.equal(sqlite.prepare('SELECT count(*) AS c FROM sync_drawing WHERE user_id = ?').get('user-b').c, 1)
 
   sqlite.close()
 })

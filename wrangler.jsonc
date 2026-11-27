@@ -6,8 +6,14 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	"routes": [
+		{
+			"pattern": "crop.notgalerie.com",
+			"custom_domain": true
+		}
+	],
 	"vars": {
-		"AUTH_URL": "https://crop.darrenchauvet.workers.dev",
+		"AUTH_URL": "https://crop.notgalerie.com",
 		"AUTH_EMAIL_FROM": "Crop <login@mail.notgalerie.com>"
 	},
 	"secrets": {
