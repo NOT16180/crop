@@ -9,12 +9,14 @@
     session: { user: { id: string; email: string; name: string } } | null
     syncState: SyncSnapshot | null
     compressWebp: boolean
+    drawingCount: number
     initialMessage?: string
     onclose: () => void
     onsignout: () => Promise<boolean>
     ondeleteaccount: () => Promise<boolean>
     onsyncnow: (mode?: 'merge' | 'replace') => Promise<void>
     ontogglewebp: () => void
+    oncompressexisting: (onProgress: (done: number, total: number) => void) => Promise<{ total: number; compressedCount: number; savedBytes: number }>
   }
 
   let {
@@ -22,18 +24,21 @@
     session,
     syncState,
     compressWebp,
+    drawingCount,
     initialMessage = '',
     onclose,
     onsignout,
     ondeleteaccount,
     onsyncnow,
     ontogglewebp,
+    oncompressexisting,
   }: Props = $props()
 
   let email = $state('')
   let message = $state('')
   let busy = $state(false)
   let confirmDelete = $state(false)
+  let compressProgress = $state('')
   let emailInput = $state<HTMLInputElement | null>(null)
   let signOutButton = $state<HTMLButtonElement | null>(null)
   let closeButton = $state<HTMLButtonElement | null>(null)
@@ -148,6 +153,28 @@
     message = ''
     await onsyncnow(mode)
   }
+
+  async function handleCompressExisting() {
+    if (busy || syncState?.phase === 'syncing' || drawingCount === 0) return
+    busy = true
+    message = ''
+    compressProgress = `0 / ${drawingCount}`
+    try {
+      const result = await oncompressexisting((done, total) => {
+        compressProgress = `${done} / ${total}`
+      })
+      if (result.compressedCount > 0) {
+        message = `Compressed ${result.compressedCount} of ${result.total} drawings to WebP (saved ${formatStorageBytes(result.savedBytes)}).`
+      } else {
+        message = 'All existing drawings are already compact.'
+      }
+    } catch {
+      message = 'Could not compress existing drawings.'
+    } finally {
+      compressProgress = ''
+      busy = false
+    }
+  }
 </script>
 
 {#if open}
@@ -181,6 +208,16 @@
               <input type="checkbox" checked={compressWebp} onchange={ontogglewebp} />
               <span>Compress new imports to WebP (max 2400px) to fit 4–5× more drawings in 100 MB</span>
             </label>
+            {#if drawingCount > 0}
+              <button
+                type="button"
+                class="account-secondary-btn"
+                disabled={busy || syncState?.phase === 'syncing'}
+                onclick={handleCompressExisting}
+              >
+                {compressProgress ? `Compressing (${compressProgress})…` : `Compress existing library (${drawingCount})`}
+              </button>
+            {/if}
 
             {#if syncState.quotaBlockedCount > 0}
               <p class="account-sync-warning" role="status">

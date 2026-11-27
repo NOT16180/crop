@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
-  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop } from './lib/images'
+  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
@@ -388,6 +388,23 @@
       window.localStorage.setItem('crop-compress-webp', compressWebp ? '1' : '0')
     } catch {
       // Keep the preference in memory for this session if storage is unavailable.
+    }
+  }
+
+  async function handleCompressExistingLibrary(onProgress: (done: number, total: number) => void) {
+    const result = await compressExistingDrawings(onProgress)
+    if (result.compressedIds.length) {
+      await Promise.all(result.compressedIds.map((id) => queueDrawingUpsert(id, { needsBlobUpload: true })))
+      await reload()
+      await refreshStorageUsage()
+      if (accountSession) {
+        await runAccountSync()
+      }
+    }
+    return {
+      total: result.total,
+      compressedCount: result.compressedIds.length,
+      savedBytes: result.savedBytes,
     }
   }
 
@@ -1209,12 +1226,14 @@
   session={accountSession}
   {syncState}
   {compressWebp}
+  drawingCount={drawings.length}
   initialMessage={accountMessage}
   onclose={closeAccount}
   onsignout={signOut}
   ondeleteaccount={handleDeleteAccount}
   onsyncnow={runAccountSync}
   ontogglewebp={toggleWebpCompression}
+  oncompressexisting={handleCompressExistingLibrary}
 />
 
 <TagManagerModal

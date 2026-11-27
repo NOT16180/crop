@@ -1,6 +1,6 @@
 import { db, type DrawingRecord, type Rect } from './db'
-import { computeScaledDimensions, isAcceptedImage } from './image-validation'
-export { computeScaledDimensions, isAcceptedImage } from './image-validation'
+import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from './image-validation'
+export { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from './image-validation'
 
 const THUMB_SIZE = 480
 export const WEBP_MAX_DIMENSION = 2400
@@ -98,7 +98,7 @@ async function makeThumbnail(
  */
 async function optimizeAsWebp(
   bitmap: ImageBitmap,
-  original: File,
+  original: Blob,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const target = computeScaledDimensions(bitmap.width, bitmap.height, WEBP_MAX_DIMENSION)
   try {
@@ -246,4 +246,57 @@ export async function downloadCrop(blob: Blob, box: Rect | null, baseName: strin
   anchor.click()
   anchor.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export interface CompressLibraryResult {
+  total: number
+  compressedIds: string[]
+  savedBytes: number
+}
+
+/**
+ * Re-encode existing drawings in IndexedDB to high-quality WebP (max 2400 px),
+ * rescaling any crop tag boxes proportionally so tags stay aligned.
+ */
+export async function compressExistingDrawings(
+  onProgress?: (done: number, total: number) => void,
+): Promise<CompressLibraryResult> {
+  const all = await db.drawings.toArray()
+  const compressedIds: string[] = []
+  let savedBytes = 0
+
+  for (let i = 0; i < all.length; i++) {
+    const drawing = all[i]
+    let bitmap: ImageBitmap | undefined
+    try {
+      bitmap = await createImageBitmap(drawing.blob)
+      const optimized = await optimizeAsWebp(bitmap, drawing.blob)
+      if (optimized.blob !== drawing.blob && optimized.blob.size < drawing.blob.size) {
+        const rescaledTags = rescaleTagBoxes(
+          drawing.tags,
+          drawing.width || bitmap.width,
+          drawing.height || bitmap.height,
+          optimized.width,
+          optimized.height,
+        )
+        const saved = drawing.blob.size - optimized.blob.size
+        await db.drawings.update(drawing.id, {
+          blob: optimized.blob,
+          width: optimized.width,
+          height: optimized.height,
+          tags: rescaledTags,
+          updatedAt: Date.now(),
+        })
+        compressedIds.push(drawing.id)
+        savedBytes += saved
+      }
+    } catch {
+      // Skip any unreadable image without blocking the rest of the library.
+    } finally {
+      bitmap?.close()
+      onProgress?.(i + 1, all.length)
+    }
+  }
+
+  return { total: all.length, compressedIds, savedBytes }
 }

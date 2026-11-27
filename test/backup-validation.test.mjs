@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
-import { computeScaledDimensions, isAcceptedImage } from '../src/lib/image-validation.ts'
+import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from '../src/lib/image-validation.ts'
 import { deduplicateTags, renameOrMergeTag, computeTagStats, areBoxesEqual } from '../src/lib/tags.ts'
 
 const folders = new Set(['folder-1'])
@@ -125,4 +125,14 @@ test('computeScaledDimensions preserves small images and scales oversized images
   assert.deepEqual(computeScaledDimensions(1200, 800, 2400), { width: 1200, height: 800 })
   assert.deepEqual(computeScaledDimensions(4800, 2400, 2400), { width: 2400, height: 1200 })
   assert.deepEqual(computeScaledDimensions(1200, 4800, 2400), { width: 600, height: 2400 })
+})
+
+test('rescaleTagBoxes scales crop rectangles proportionally and leaves whole-image tags intact', () => {
+  const tags = [
+    { id: 't1', label: 'hand', box: [400, 1000, 800, 600] },
+    { id: 't2', label: 'lineart', box: null },
+  ]
+  const rescaled = rescaleTagBoxes(tags, 4000, 5000, 1920, 2400)
+  assert.deepEqual(rescaled[0].box, [192, 480, 384, 288])
+  assert.equal(rescaled[1].box, null)
 })

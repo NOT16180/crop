@@ -1428,7 +1428,7 @@ details[open] > summary::before {
     }
 
     .viewer-image img {
-        max-height: min(50dvh, calc(100dvh - 300px)) !important;
+        max-height: min(50dvh, calc(100dvh - 300px));
     }
 
     .drawing-folder {
