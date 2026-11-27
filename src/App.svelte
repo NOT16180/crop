@@ -5,6 +5,16 @@
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
+  import {
+    getSyncSnapshot,
+    queueDrawingDeletes,
+    queueDrawingUpsert,
+    queueFolderDelete,
+    queueFolderUpsert,
+    scheduleSync,
+    syncNow,
+    type SyncSnapshot,
+  } from './lib/sync'
   import Toolbar from './lib/Toolbar.svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import AccountModal from './lib/AccountModal.svelte'
@@ -40,7 +50,8 @@
   let showAccount = $state(false)
   let accountMessage = $state('')
   let showTagManager = $state(false)
-  let accountSession = $state<{ user: { email: string; name: string } } | null>(null)
+  let accountSession = $state<{ user: { id: string; email: string; name: string } } | null>(null)
+  let syncState = $state<SyncSnapshot | null>(null)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
   let zoom = $state(1)
@@ -241,6 +252,9 @@
       event.preventDefault()
       installEvent = event as unknown as typeof installEvent
     })
+    window.addEventListener('online', () => {
+      if (accountSession) void runAccountSync()
+    })
     try {
       await removeLegacyAnalysisData()
     } catch {
@@ -250,12 +264,69 @@
     await refreshStorageUsage()
   })
 
+  function syncCallbacks() {
+    return {
+      onStateChange: (snapshot: SyncSnapshot) => {
+        syncState = snapshot
+      },
+      onRemoteApplied: async () => {
+        await reload()
+        await refreshStorageUsage()
+      },
+    }
+  }
+
+  async function runAccountSync(mode?: 'merge' | 'replace') {
+    if (!accountSession) return
+    syncState = await syncNow(accountSession.user, {
+      accountSwitchMode: mode,
+      ...syncCallbacks(),
+    })
+  }
+
+  function triggerScheduledSync() {
+    if (!accountSession) return
+    void getSyncSnapshot(syncState?.phase ?? 'idle').then((snap) => { syncState = snap })
+    scheduleSync(accountSession.user, syncCallbacks())
+  }
+
+  function markDrawingChanged(id: string, needsBlobUpload = false) {
+    void queueDrawingUpsert(id, { needsBlobUpload }).then(() => triggerScheduledSync())
+  }
+
+  function markDrawingsChanged(ids: string[], needsBlobUpload = false) {
+    if (!ids.length) return
+    void Promise.all(ids.map((id) => queueDrawingUpsert(id, { needsBlobUpload }))).then(() => triggerScheduledSync())
+  }
+
+  function markFolderChanged(id: string) {
+    void queueFolderUpsert(id).then(() => triggerScheduledSync())
+  }
+
+  function markFolderDeleted(id: string) {
+    void queueFolderDelete(id).then(() => triggerScheduledSync())
+  }
+
+  function commitPendingDeletes(toCommit: DrawingRecord[]) {
+    if (!toCommit.length) return
+    void queueDrawingDeletes(toCommit.map((d) => d.id)).then(() => triggerScheduledSync())
+  }
+
   async function refreshAccountSession() {
     try {
       const { data } = await authClient.getSession()
-      accountSession = data?.user ? { user: { email: data.user.email, name: data.user.name } } : null
+      accountSession = data?.user
+        ? { user: { id: data.user.id, email: data.user.email, name: data.user.name } }
+        : null
+      if (accountSession) {
+        syncState = await getSyncSnapshot(syncState?.phase ?? 'idle')
+        void runAccountSync()
+      } else {
+        syncState = null
+      }
     } catch {
       accountSession = null
+      syncState = null
     }
   }
 
@@ -276,6 +347,7 @@
       const { error: signOutError } = await authClient.signOut()
       if (signOutError) return false
       accountSession = null
+      syncState = null
       return true
     } catch {
       return false
@@ -306,6 +378,7 @@
         ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
         position: position++,
       })))
+      markDrawingsChanged(result.created.map((drawing) => drawing.id), true)
       await reload()
       if (result.failures.length) {
         const details = result.failures.slice(0, 3).map((failure) => `${failure.name}: ${failure.reason}`).join(' · ')
@@ -341,6 +414,7 @@
     }
     const updates = arranged.map((drawing, position) => ({ id: drawing.id, position }))
     await Promise.all(updates.map(({ id, position }) => db.drawings.update(id, { position })))
+    markDrawingsChanged(updates.map(({ id }) => id))
     drawings = arranged.map((drawing, position) => ({ ...drawing, position }))
   }
 
@@ -370,6 +444,7 @@
     }
     const folder = { id: crypto.randomUUID(), name }
     await db.folders.add(folder)
+    markFolderChanged(folder.id)
     folders = [...folders, folder].sort((a, b) => a.name.localeCompare(b.name))
     selectedFolderId = folder.id
     query = ''
@@ -383,16 +458,20 @@
       return
     }
     await db.folders.update(folder.id, { name })
+    markFolderChanged(folder.id)
     folders = folders.map((candidate) => candidate.id === folder.id ? { ...candidate, name } : candidate)
   }
 
   async function deleteFolder(folder: FolderRecord) {
     const count = drawings.filter((drawing) => drawing.folderId === folder.id).length
     if (!confirm(`Delete the folder “${folder.name}”? This removes only the folder. Its ${count} image${count === 1 ? '' : 's'} and tags will be kept in All images as unfiled.`)) return
-    await Promise.all(drawings
+    const affectedDrawingIds = drawings
       .filter((drawing) => drawing.folderId === folder.id)
-      .map((drawing) => db.drawings.update(drawing.id, { folderId: undefined })))
+      .map((drawing) => drawing.id)
+    await Promise.all(affectedDrawingIds.map((id) => db.drawings.update(id, { folderId: undefined })))
     await db.folders.delete(folder.id)
+    markDrawingsChanged(affectedDrawingIds)
+    markFolderDeleted(folder.id)
     drawings = drawings.map((drawing) => drawing.folderId === folder.id
       ? { ...drawing, folderId: undefined }
       : drawing)
@@ -403,6 +482,7 @@
   async function moveSelectedDrawings(folderId: string | undefined, selectedIds: string[]) {
     if (selectedIds.length === 0) return
     await Promise.all(selectedIds.map((id) => db.drawings.update(id, { folderId })))
+    markDrawingsChanged(selectedIds)
     const selected = new Set(selectedIds)
     drawings = drawings.map((drawing) => selected.has(drawing.id) ? { ...drawing, folderId } : drawing)
     notice = `Moved images to ${folders.find((folder) => folder.id === folderId)?.name ?? 'Unfiled'}.`
@@ -424,6 +504,8 @@
     try {
       const { restoreBackup } = await import('./lib/backup')
       const result = await restoreBackup(file)
+      for (const id of result.folderIds) markFolderChanged(id)
+      markDrawingsChanged(result.drawingIds, true)
       await reload()
       await refreshStorageUsage()
       notice = `Restored ${result.drawings} image${result.drawings === 1 ? '' : 's'} and ${result.folders} folder${result.folders === 1 ? '' : 's'}.`
@@ -435,6 +517,7 @@
 
   async function moveToFolder(drawing: DrawingRecord, folderId: string) {
     await db.drawings.update(drawing.id, { folderId: folderId || undefined })
+    markDrawingChanged(drawing.id)
     drawings = drawings.map((item) => item.id === drawing.id
       ? { ...item, folderId: folderId || undefined }
       : item)
@@ -467,6 +550,7 @@
   async function saveTags(id: string, tags: Tag[]) {
     try {
       await db.drawings.update(id, { tags, visibleTagIds })
+      markDrawingChanged(id)
       drawings = drawings.map((d) => (d.id === id ? { ...d, tags, visibleTagIds } : d))
       error = ''
     } catch (cause) {
@@ -492,6 +576,7 @@
     try {
       const nextVisibleTagIds = [...new Set([...visibleTagIds, tag.id])]
       await db.drawings.update(drawing.id, { tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds })
+      markDrawingChanged(drawing.id)
       visibleTagIds = nextVisibleTagIds
       drawings = drawings.map((item) => item.id === drawing.id
         ? { ...item, tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds }
@@ -511,6 +596,7 @@
       .filter((id) => id !== tagId)
     try {
       await db.drawings.update(drawing.id, { tags, visibleTagIds: nextVisibleTagIds })
+      markDrawingChanged(drawing.id)
       drawings = drawings.map((item) => item.id === drawing.id
         ? { ...item, tags, visibleTagIds: nextVisibleTagIds }
         : item)
@@ -529,10 +615,12 @@
     if (affectedCount === 0) return
 
     try {
+      const updatedIds: string[] = []
       await db.transaction('rw', db.drawings, async () => {
         for (const drawing of changedDrawings) {
           const original = drawings.find((d) => d.id === drawing.id)
           if (original && (original.tags !== drawing.tags || original.visibleTagIds !== drawing.visibleTagIds)) {
+            updatedIds.push(drawing.id)
             await db.drawings.update(drawing.id, {
               tags: drawing.tags,
               visibleTagIds: drawing.visibleTagIds,
@@ -540,6 +628,7 @@
           }
         }
       })
+      markDrawingsChanged(updatedIds)
       const updateById = new Map(changedDrawings.map((d) => [d.id, d]))
       drawings = changedDrawings
       if (viewerId) {
@@ -563,10 +652,12 @@
     if (affectedCount === 0) return
 
     try {
+      const updatedIds: string[] = []
       await db.transaction('rw', db.drawings, async () => {
         for (const drawing of changedDrawings) {
           const original = drawings.find((d) => d.id === drawing.id)
           if (original && original.tags.length !== drawing.tags.length) {
+            updatedIds.push(drawing.id)
             await db.drawings.update(drawing.id, {
               tags: drawing.tags,
               visibleTagIds: drawing.visibleTagIds,
@@ -574,6 +665,7 @@
           }
         }
       })
+      markDrawingsChanged(updatedIds)
       const updateById = new Map(changedDrawings.map((d) => [d.id, d]))
       drawings = changedDrawings
       if (viewerId) {
@@ -614,6 +706,7 @@
       : visibleTagIds.filter((id) => id !== tagId)
     if (!viewer) return
     await db.drawings.update(viewer.id, { visibleTagIds })
+    markDrawingChanged(viewer.id)
     drawings = drawings.map((drawing) => drawing.id === viewer!.id
       ? { ...drawing, visibleTagIds }
       : drawing)
@@ -626,6 +719,7 @@
       : visibleTagIds.filter((id) => !ids.has(id))
     if (!viewer) return
     await db.drawings.update(viewer.id, { visibleTagIds })
+    markDrawingChanged(viewer.id)
     drawings = drawings.map((drawing) => drawing.id === viewer!.id
       ? { ...drawing, visibleTagIds }
       : drawing)
@@ -637,8 +731,10 @@
     if (deleteTimer) clearTimeout(deleteTimer)
     pendingDeletedDrawings = [...pendingDeletedDrawings, drawing]
     deleteTimer = window.setTimeout(() => {
+      const committed = pendingDeletedDrawings
       pendingDeletedDrawings = []
       deleteTimer = undefined
+      commitPendingDeletes(committed)
     }, 8000)
     drawings = drawings.filter((item) => item.id !== drawing.id)
     closeViewer()
@@ -902,6 +998,7 @@
     const name = prompt('New name:', drawing.name)?.trim()
     if (!name || name === drawing.name) return
     await db.drawings.update(drawing.id, { name })
+    markDrawingChanged(drawing.id)
     drawings = drawings.map((d) => d.id === drawing.id ? { ...d, name } : d)
   }
 
@@ -948,8 +1045,10 @@
     pendingDeletedDrawings = [...pendingDeletedDrawings, ...removed]
     if (deleteTimer) clearTimeout(deleteTimer)
     deleteTimer = window.setTimeout(() => {
+      const committed = pendingDeletedDrawings
       pendingDeletedDrawings = []
       deleteTimer = undefined
+      commitPendingDeletes(committed)
     }, 8000)
     drawings = drawings.filter((d) => !deleted.has(d.id))
     notice = `${deleted.size} image${deleted.size === 1 ? '' : 's'} deleted. Undo is available for 8 seconds.`
@@ -970,6 +1069,7 @@
     }).filter((u): u is { id: string; tags: Tag[]; visibleTagIds: string[] } => u !== null)
     if (!updates.length) return
     await Promise.all(updates.map(({ id, tags, visibleTagIds }) => db.drawings.update(id, { tags, visibleTagIds })))
+    markDrawingsChanged(updates.map(({ id }) => id))
     const tagMap = new Map(updates.map((u) => [u.id, u.tags]))
     const visibleMap = new Map(updates.map((u) => [u.id, u.visibleTagIds]))
     drawings = drawings.map((d) => tagMap.has(d.id)
@@ -1068,9 +1168,11 @@
 <AccountModal
   open={showAccount}
   session={accountSession}
+  {syncState}
   initialMessage={accountMessage}
   onclose={closeAccount}
   onsignout={signOut}
+  onsyncnow={runAccountSync}
 />
 
 <TagManagerModal

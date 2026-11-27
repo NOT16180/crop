@@ -60,7 +60,7 @@ export async function downloadBackup(): Promise<void> {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export async function restoreBackup(file: File): Promise<{ drawings: number; folders: number }> {
+export async function restoreBackup(file: File): Promise<{ drawings: number; folders: number; drawingIds: string[]; folderIds: string[] }> {
   if (file.size > MAX_ARCHIVE_BYTES) {
     throw new Error('This backup is too large to restore in the browser (maximum 600 MB).')
   }
@@ -144,5 +144,10 @@ export async function restoreBackup(file: File): Promise<{ drawings: number; fol
     await db.folders.bulkAdd(foldersToAdd)
     await db.drawings.bulkAdd(drawingsToAdd)
   })
-  return { drawings: drawingsToAdd.length, folders: foldersToAdd.length }
+  return {
+    drawings: drawingsToAdd.length,
+    folders: foldersToAdd.length,
+    drawingIds: drawingsToAdd.map((d) => d.id),
+    folderIds: foldersToAdd.map((f) => f.id),
+  }
 }

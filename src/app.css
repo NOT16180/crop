@@ -114,6 +114,15 @@ header {
 .account-form { display: grid; gap: 10px; margin-top: 18px; }
 .account-form input { min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 0; background: var(--surface); color: var(--text); font: inherit; }
 .account-message { margin-bottom: 0; }
+.account-sync { display: grid; gap: 10px; margin: 16px 0; padding: 12px; border: 1px solid var(--border); }
+.account-sync-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.account-sync-label { font-size: 0.78rem; letter-spacing: 0.08em; color: var(--muted); }
+.account-sync-status { font-size: 0.85rem; }
+.account-quota { display: grid; gap: 4px; }
+.account-quota-bar { height: 6px; border: 1px solid var(--border); background: var(--bg); overflow: hidden; }
+.account-quota-fill { height: 100%; background: var(--accent); transition: width 0.2s ease; }
+.account-sync-warning { margin: 0; font-size: 0.85rem; line-height: 1.4; color: var(--muted); }
+.account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
     .side-menu { transition: none; }

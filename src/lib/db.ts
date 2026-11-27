@@ -14,6 +14,7 @@ export interface DrawingRecord {
   id: string
   name: string
   createdAt: number
+  updatedAt?: number
   width: number
   height: number
   blob: Blob
@@ -27,11 +28,34 @@ export interface DrawingRecord {
 export interface FolderRecord {
   id: string
   name: string
+  updatedAt?: number
+}
+
+export interface SyncOutboxRecord {
+  key: string
+  entity: 'folder' | 'drawing'
+  id: string
+  deleted: boolean
+  needsBlobUpload: boolean
+  updatedAt: number
+  blockedReason?: 'quota' | 'too_large'
+}
+
+export interface SyncMetaRecord {
+  key: 'state'
+  userId: string
+  userEmail: string
+  lastSeq: number
+  lastSyncAt: number | null
+  usedBytes: number
+  quotaBytes: number
 }
 
 class LibraryDB extends Dexie {
   drawings!: Table<DrawingRecord, string>
   folders!: Table<FolderRecord, string>
+  syncOutbox!: Table<SyncOutboxRecord, string>
+  syncMeta!: Table<SyncMetaRecord, string>
 
   constructor() {
     super('drawing-library')
@@ -45,6 +69,12 @@ class LibraryDB extends Dexie {
     this.version(3).stores({
       drawings: 'id, createdAt, name, folderId, position',
       folders: 'id, name',
+    })
+    this.version(4).stores({
+      drawings: 'id, createdAt, name, folderId, position',
+      folders: 'id, name',
+      syncOutbox: 'key, entity, id, updatedAt',
+      syncMeta: 'key',
     })
   }
 }
