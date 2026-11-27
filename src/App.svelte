@@ -5,6 +5,7 @@
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
+  import { formatStorageBytes } from './lib/sync-protocol'
   import {
     getSyncSnapshot,
     queueDrawingDeletes,
@@ -1198,11 +1199,14 @@
 <details class="data-warning">
   <summary>
     {#if accountSession}
-      <strong>Cloud sync enabled</strong> ({accountSession.user.email}) · local offline copy active.
+      <strong>Cloud sync active</strong> ({accountSession.user.email}) · works offline on this device.
+      {#if syncState && syncState.phase !== 'unavailable'}
+        <span class="storage-usage">{formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)} cloud</span>
+      {/if}
     {:else}
-      <strong>Your library stays in this browser</strong> until you sign in. Keep a backup of it.
+      <strong>Local mode only.</strong> Sign in to sync across devices (100 MB cloud), or keep a Backup ZIP.
+      {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} stored locally</span>{/if}
     {/if}
-    {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} of {formatFileSize(storageUsage.quota)} used</span>{/if}
     {#if !installed}
       <span class="install-line">
         <strong>Install Crop:</strong> browser menu → <em>Install</em> or <em>Add to Home screen</em>. It then works offline.
@@ -1213,15 +1217,16 @@
     {/if}
   </summary>
   {#if accountSession}
-    <p>Your drawings, folders, and tags stay stored locally for offline use and sync to your account (up to 100 MB cloud storage). Keep original files and download a <strong>Backup</strong> ZIP for large libraries.</p>
+    <p>Your drawings, folders, and tags are saved locally for instant offline access and synced to your account (up to 100 MB cloud storage, 20 MB max per image).{#if storageUsage} Local browser storage: {formatFileSize(storageUsage.usage)}.{/if}</p>
+    <p>If your cloud quota is full, new drawings still stay saved on this device and you can download a full <strong>Backup</strong> ZIP anytime from <strong>Menu → Backup</strong>.</p>
   {:else}
-    <p>Without an account, Crop stores images and tags on this device only; nothing is uploaded. Sign in from <strong>Menu → Sign in</strong> to sync across devices, or download a <strong>Backup</strong> regularly.</p>
+    <p>Without an account, Crop stores images and tags in this browser on this device only; nothing is uploaded. Open <strong>Menu → Sign in</strong> to sync across devices with an email link, or download a <strong>Backup</strong> ZIP regularly.</p>
   {/if}
   {#if !installed}
-    <p>Installing Crop keeps it working with no network and protects its storage from automatic cleanup.</p>
+    <p>Installing Crop keeps it working with no network and protects local storage from automatic cleanup.</p>
   {/if}
   {#if persistenceWarning}
-    <p>⚠ Your browser did not grant persistent storage, so the library may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>): an installed app keeps working offline and its storage becomes persistent.</p>
+    <p>⚠ Your browser did not grant persistent storage, so local data may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>) for persistent offline storage.</p>
   {/if}
 </details>
 
@@ -1298,34 +1303,29 @@
 <main>
   {#if showHelp}
     <article class="help-page">
-      <h2>How to use the image library</h2>
-      <p>Crop is a personal library for your drawings. Add tags to whole images or specific areas, then search those tags to find the drawing or detail you need. It works offline in your browser and can sync across devices when you sign in.</p>
+      <h2>How to use Crop</h2>
+      <p>Crop is a personal drawing and reference library. Tag whole images or specific cropped areas, search details instantly, work offline in your browser, and sync across devices when signed in.</p>
 
-      <p>Add PNG, JPG, WebP, or AVIF images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot. Files the browser cannot decode are reported individually.</p>
+      <h3>1. Add images</h3>
+      <p>Click <strong>Add images</strong>, drag files onto the page, or paste a screenshot with <strong>Ctrl+V / ⌘V</strong>. Crop supports <strong>PNG, JPG, WebP, and AVIF</strong>; files the browser cannot decode are reported individually.</p>
 
-      <h3>Find images with tags</h3>
-      <p>Type a tag in the search box to find matching images. Select a tag from the Tags menu to get the same results, including any tagged area. Select multiple tags to filter images that have all or any of those tags.</p>
+      <h3>2. Tag whole images or specific areas</h3>
+      <p>Open any image to add tags. Type a tag directly for the whole image, or drag a rectangle first to tag a specific area (you can resize crop boxes anytime). Use <strong>Manage tags</strong> (or <strong>Menu → Tag manager</strong>) to rename, merge without duplicates, or delete tags across your entire library.</p>
 
-      <h3>Add and manage tags</h3>
-      <p>Open an image to add tags. Type a tag for the whole image, or drag over an area first to tag just that part. In the Tags menu, rename a tag everywhere in your library, or remove it from this image.</p>
+      <h3>3. Search, filter, and organize</h3>
+      <p>Search by tag with autocomplete or combine multiple tags in <strong>all</strong> or <strong>any</strong> mode. Create folders from the <strong>Folder</strong> menu (deleting a folder keeps its drawings under <em>All images</em>), reorder drawings by dragging or with <strong>Arrange drawings</strong>, and use <strong>Select</strong> to move, bulk-tag, or delete several images at once (deletions can be undone for 8 seconds).</p>
 
-      <h3>Organize your library</h3>
-      <p>Create folders from the Folders menu and move images using the folder control in the viewer or the bulk selection tools. Deleting a folder keeps its images and tags; they become unfiled under All images.</p>
+      <h3>4. Copy crops and export reference sheets</h3>
+      <p>When viewing tagged crops in the gallery or viewer, click <strong>Copy</strong> to put a PNG crop on your clipboard or <strong>Download</strong> to save it directly. Click <strong>Export sheet</strong> to combine the current results into a single labeled PNG reference sheet (choose the count in the <strong>Sheet</strong> menu, or <em>All images</em>).</p>
 
-      <h3>Cloud sync, backups, and display</h3>
-      <p>Your drawings are always stored locally in this browser so Crop works offline. Sign in from <strong>Menu → Sign in</strong> to sync up to 100 MB across devices. You can also download a <strong>Backup</strong> ZIP anytime and keep a copy somewhere safe. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
+      <h3>5. Account and cloud sync</h3>
+      <p>Open <strong>Menu → Sign in</strong> to connect with an email sign-in link (no password needed). Once signed in, your folders, drawings, and tags sync automatically across devices with up to <strong>100 MB</strong> of cloud storage (<strong>20 MB</strong> max per image). Your local library always keeps working without limits: if cloud storage is full, new images stay saved on this device until you free space by deleting drawings.</p>
 
-      <h3>Share a set of references</h3>
-      <p><strong>Export sheet</strong> turns the images currently shown into a single PNG sheet: tagged areas are cropped, tag names are written under each tile, and the address of Crop is printed at the bottom. Choose how many images the sheet holds with the <strong>Sheet</strong> menu next to it — or <em>All images</em> to export every result.</p>
+      <h3>6. Offline mode, backups, and theme</h3>
+      <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the menu.</p>
 
-      <h3>Use Crop offline</h3>
-      <p>Crop can be installed as an app from your browser menu (<em>Install</em>, or <em>Add to Home screen</em>). Installed, it opens without a network connection and your library is much less likely to be cleared when the device is low on space.</p>
-
-      <h3>Send feedback</h3>
-      <p>Use the <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">feedback form on GitHub</a> to share what worked or what could be better. Submissions are public GitHub issues, so do not include private artwork or personal information.</p>
-
-      <h3>Support this app</h3>
-      <p>If you enjoy using the app, you can <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support me on Ko-fi</a>. Donations are entirely optional.</p>
+      <h3>Feedback and support</h3>
+      <p>Share ideas or bugs via the <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">GitHub feedback form</a> (public issues — avoid private artwork or personal info). If you enjoy Crop, you can also <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support it on Ko-fi</a>.</p>
     </article>
   {:else}
   {#if drawings.length === 0}
