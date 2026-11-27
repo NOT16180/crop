@@ -1644,3 +1644,139 @@ button.danger:hover {
         flex: 1 0 100%;
     }
 }
+
+/* --- Ergonomic enhancements --- */
+.data-warning summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.summary-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.summary-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.summary-btn {
+    padding: 3px 9px;
+    font-size: 0.78rem;
+    min-height: 0 !important;
+}
+
+.active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.filter-chip {
+    padding: 4px 9px;
+    font-size: 0.8rem;
+    min-height: 0 !important;
+}
+
+.filter-chip.clear-all-chip {
+    border-style: dashed;
+    color: var(--muted);
+}
+
+.toast-stack {
+    position: fixed;
+    left: 50%;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 200;
+    display: grid;
+    gap: 8px;
+    width: min(520px, calc(100vw - 24px));
+    pointer-events: none;
+}
+
+.status.toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    pointer-events: auto;
+}
+
+.status.toast span {
+    flex: 1;
+    min-width: 0;
+}
+
+.status.error.toast {
+    border-color: #b91c1c;
+    color: #b91c1c;
+}
+
+[data-theme="dark"] .status.error.toast {
+    border-color: #f87171;
+    color: #f87171;
+}
+
+.viewer-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}
+
+.viewer-nav-count {
+    min-width: 4ch;
+    font-size: 0.82rem;
+    color: var(--muted);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.quick-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.quick-tag-chip {
+    padding: 4px 8px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    min-height: 0 !important;
+}
+
+.quick-tag-chip:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.local-only-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 1px 5px;
+    background: #000c;
+    color: #fff;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    pointer-events: none;
+}

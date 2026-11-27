@@ -144,6 +144,25 @@
     return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
   })
   const allTagStats = $derived(computeTagStats(drawings))
+  let localOnlyDrawingIds = $derived(new Set(syncState?.localOnlyIds ?? []))
+  let viewerNavItems = $derived.by(() => {
+    const seen = new Set<string>()
+    return items.filter((item) => {
+      if (seen.has(item.drawing.id)) return false
+      seen.add(item.drawing.id)
+      return true
+    })
+  })
+  let viewerNavIndex = $derived(viewerId ? viewerNavItems.findIndex((item) => item.drawing.id === viewerId) : -1)
+  let quickTags = $derived.by(() => {
+    if (!viewer) return []
+    const existingWhole = new Set(
+      viewer.tags.filter((tag) => !tag.box).map((tag) => normalizeText(tag.label)),
+    )
+    return tagList
+      .filter((entry) => selection || !existingWhole.has(normalizeText(entry.label)))
+      .slice(0, 8)
+  })
   const searchSuggestions = $derived.by(() => {
     const value = normalizeText(query)
     if (!value) return []
@@ -627,9 +646,9 @@
     }
   }
 
-  async function addTag() {
+  async function addTag(explicitLabel?: string) {
     const drawing = viewer
-    const label = tagInput.trim()
+    const label = (explicitLabel ?? tagInput).trim()
     if (!drawing || !label) return
     const box: Rect | null = selection
       ? clampBox([
@@ -882,12 +901,31 @@
       else if (viewer) closeViewer()
       return
     }
-    if (viewer && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    if (viewer) {
       const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
-      e.preventDefault()
-      navigateViewer(e.key === 'ArrowLeft' ? -1 : 1)
-      return
+      const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT'
+      if (!typing) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault()
+          navigateViewer(e.key === 'ArrowLeft' ? -1 : 1)
+          return
+        }
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault()
+          changeZoom(0.25)
+          return
+        }
+        if (e.key === '-') {
+          e.preventDefault()
+          changeZoom(-0.25)
+          return
+        }
+        if (e.key === '0') {
+          e.preventDefault()
+          zoom = 1
+          return
+        }
+      }
     }
     if (e.key !== 'Tab' || !viewerDialog) return
     const focusable = [...viewerDialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, [tabindex="0"]')]
@@ -1107,16 +1145,9 @@
   }
 
   function navigateViewer(offset: number) {
-    if (!viewerId) return
-    const seen = new Set<string>()
-    const navigationItems = items.filter((item) => {
-      if (seen.has(item.drawing.id)) return false
-      seen.add(item.drawing.id)
-      return true
-    })
-    const index = navigationItems.findIndex((item) => item.drawing.id === viewerId)
-    const next = navigationItems[index + offset]
-    if (index < 0 || !next) return
+    if (viewerNavIndex < 0) return
+    const next = viewerNavItems[viewerNavIndex + offset]
+    if (!next) return
     openViewer(next)
   }
 
@@ -1278,23 +1309,30 @@
 
 <details class="data-warning">
   <summary>
-    {#if accountSession}
-      <strong>Cloud sync active</strong> ({accountSession.user.email}) · works offline on this device.
-      {#if syncState && syncState.phase !== 'unavailable'}
-        <span class="storage-usage">{formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)} cloud</span>
-      {/if}
-    {:else}
-      <strong>Local mode only.</strong> Sign in to sync across devices (100 MB cloud), or keep a Backup ZIP.
-      {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} stored locally</span>{/if}
-    {/if}
-    {#if !installed}
-      <span class="install-line">
-        <strong>Install Crop:</strong> browser menu → <em>Install</em> or <em>Add to Home screen</em>. It then works offline.
-        {#if installEvent}
-          <button type="button" onclick={(event) => { event.preventDefault(); event.stopPropagation(); installApp() }}>Install Crop</button>
+    <span class="summary-main">
+      {#if accountSession}
+        <strong>Cloud sync</strong>
+        {#if syncState && syncState.phase !== 'unavailable'}
+          · {formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)}
         {/if}
-      </span>
-    {/if}
+      {:else}
+        <strong>Local mode</strong>{#if storageUsage} · {formatFileSize(storageUsage.usage)}{/if}
+      {/if}
+    </span>
+    <span class="summary-actions">
+      <button
+        type="button"
+        class="summary-btn"
+        onclick={(event) => { event.preventDefault(); event.stopPropagation(); void openAccount() }}
+      >{accountSession ? 'Account & storage' : 'Sign in'}</button>
+      {#if !installed && installEvent}
+        <button
+          type="button"
+          class="summary-btn"
+          onclick={(event) => { event.preventDefault(); event.stopPropagation(); installApp() }}
+        >Install app</button>
+      {/if}
+    </span>
   </summary>
   {#if accountSession}
     <p>Your drawings, folders, and tags are saved locally for instant offline access and synced to your account (up to 100 MB cloud storage, 20 MB max per image).{#if storageUsage} Local browser storage: {formatFileSize(storageUsage.usage)}.{/if}</p>
@@ -1371,13 +1409,48 @@
   <button type="button" class="tag-manager-nav-btn" onclick={() => (showTagManager = true)}>Manage tags</button>
 </nav>
 
-{#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
-{#if notice}
-  <p class="status notice">
-    {notice}
-    {#if pendingDeletedDrawings.length}<button type="button" onclick={undoDelete}>Undo deletion ({pendingDeletedDrawings.length})</button>{/if}
-    <button type="button" onclick={() => (notice = '')} aria-label="Dismiss notification">×</button>
-  </p>
+{#if selectedFolderId || query.trim() || selectedTagLabels.length}
+  <div class="active-filters" aria-label="Active filters">
+    {#if selectedFolderId}
+      <button type="button" class="filter-chip" onclick={() => (selectedFolderId = '')}>
+        Folder: {folders.find((f) => f.id === selectedFolderId)?.name ?? 'Folder'} ×
+      </button>
+    {/if}
+    {#if query.trim()}
+      <button type="button" class="filter-chip" onclick={() => (query = '')}>
+        Search: “{query.trim()}” ×
+      </button>
+    {/if}
+    {#each selectedTagLabels as tagKey (tagKey)}
+      {@const display = tagList.find((t) => normalizeText(t.label) === tagKey)?.label ?? tagKey}
+      <button type="button" class="filter-chip" onclick={() => toggleTagFilter(display, false)}>
+        #{display} ×
+      </button>
+    {/each}
+    <button
+      type="button"
+      class="filter-chip clear-all-chip"
+      onclick={() => { selectedFolderId = ''; query = ''; selectedTagLabels = [] }}
+    >Clear all</button>
+  </div>
+{/if}
+
+{#if error || notice}
+  <div class="toast-stack" aria-live="polite">
+    {#if error}
+      <p class="status error toast" role="alert" aria-live="assertive">
+        <span>{error}</span>
+        <button type="button" onclick={() => (error = '')} aria-label="Dismiss error">×</button>
+      </p>
+    {/if}
+    {#if notice}
+      <p class="status notice toast">
+        <span>{notice}</span>
+        {#if pendingDeletedDrawings.length}<button type="button" onclick={undoDelete}>Undo ({pendingDeletedDrawings.length})</button>{/if}
+        <button type="button" onclick={() => (notice = '')} aria-label="Dismiss notification">×</button>
+      </p>
+    {/if}
+  </div>
 {/if}
 
 <main>
@@ -1451,6 +1524,7 @@
       {sheetSize}
       {folders}
       {selectedFolderId}
+      localOnlyIds={localOnlyDrawingIds}
       tagSuggestions={tagList}
       {activeSearchQuery}
       {drawingDisplayName}
@@ -1483,12 +1557,19 @@
     <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
     <figure aria-label="Image and tag controls">
       <div class="viewer-toolbar">
-        <div class="zoom-controls" aria-label="Image zoom controls">
-          <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out">−</button>
+        <div class="zoom-controls" aria-label="Image zoom and navigation controls">
+          <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out (-)">−</button>
           <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-          <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in">+</button>
-          <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom">Reset</button>
-          <button type="button" class="viewer-close-btn" onclick={closeViewer} aria-label="Close viewer" title="Close viewer">×</button>
+          <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in (+)">+</button>
+          <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom (0)">Reset</button>
+          {#if viewerNavItems.length > 1 && viewerNavIndex >= 0}
+            <div class="viewer-nav" aria-label="Browse drawings">
+              <button type="button" onclick={() => navigateViewer(-1)} disabled={viewerNavIndex <= 0} aria-label="Previous image" title="Previous (←)">‹</button>
+              <span class="viewer-nav-count">{viewerNavIndex + 1}/{viewerNavItems.length}</span>
+              <button type="button" onclick={() => navigateViewer(1)} disabled={viewerNavIndex >= viewerNavItems.length - 1} aria-label="Next image" title="Next (→)">›</button>
+            </div>
+          {/if}
+          <button type="button" class="viewer-close-btn" onclick={closeViewer} aria-label="Close viewer" title="Close viewer (Esc)">×</button>
         </div>
         {#if viewerBox}
           <div class="viewer-active-crop" aria-label="Focused crop actions">
@@ -1630,6 +1711,19 @@
         {/if}
         {#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
       </form>
+
+      {#if quickTags.length > 0}
+        <div class="quick-tags" aria-label="Quick add existing tags">
+          {#each quickTags as entry (entry.label)}
+            <button
+              type="button"
+              class="quick-tag-chip"
+              onclick={() => addTag(entry.label)}
+              title={selection ? `Tag selected area with "${entry.label}"` : `Add "${entry.label}"`}
+            >+ {entry.label}</button>
+          {/each}
+        </div>
+      {/if}
 
       <label class="drawing-folder">Folder
         <select value={viewer.folderId ?? ''} onchange={(event) => moveToFolder(viewer!, event.currentTarget.value)}>

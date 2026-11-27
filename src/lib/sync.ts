@@ -29,6 +29,7 @@ export interface SyncSnapshot {
   pendingCount: number
   quotaBlockedCount: number
   tooLargeCount: number
+  localOnlyIds: string[]
   errorMessage: string | null
   previousAccountEmail: string | null
 }
@@ -119,6 +120,9 @@ export async function getSyncSnapshot(
   ])
   const quotaBlockedCount = outbox.filter((item) => item.blockedReason === 'quota').length
   const tooLargeCount = outbox.filter((item) => item.blockedReason === 'too_large').length
+  const localOnlyIds = outbox
+    .filter((item) => item.entity === 'drawing' && !item.deleted && (item.blockedReason === 'quota' || item.blockedReason === 'too_large'))
+    .map((item) => item.id)
   return {
     phase,
     usedBytes: meta?.usedBytes ?? 0,
@@ -127,6 +131,7 @@ export async function getSyncSnapshot(
     pendingCount: outbox.length,
     quotaBlockedCount,
     tooLargeCount,
+    localOnlyIds,
     errorMessage: null,
     previousAccountEmail: null,
     ...overrides,

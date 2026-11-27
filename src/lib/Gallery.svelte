@@ -24,6 +24,7 @@
     sheetSize: string
     folders: FolderRecord[]
     selectedFolderId: string
+    localOnlyIds?: ReadonlySet<string>
     tagSuggestions?: { label: string; count: number }[]
     activeSearchQuery: string
     drawingDisplayName: (drawing: DrawingRecord) => string
@@ -57,6 +58,7 @@
     sheetSize,
     folders,
     selectedFolderId,
+    localOnlyIds,
     tagSuggestions = [],
     activeSearchQuery,
     drawingDisplayName,
@@ -291,6 +293,9 @@
             {#if item.label}<span class="badge">{item.label}</span>{/if}
           {:else}
             <Thumb blob={item.drawing.thumb} alt={item.drawing.name} onfail={() => onrepairdrawing(item.drawing)} />
+          {/if}
+          {#if localOnlyIds?.has(item.drawing.id)}
+            <span class="local-only-badge" title="Saved locally only (cloud limit reached)">Local</span>
           {/if}
         </button>
         <div class="drawing-meta">
