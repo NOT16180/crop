@@ -240,6 +240,7 @@ async function uploadBlob(
   const mime = blob.type || 'image/png'
   const res = await fetch(`/api/sync/blobs/${encodeURIComponent(drawingId)}/${kind}`, {
     method: 'PUT',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'Content-Type': mime },
     body: blob,
   })
@@ -260,6 +261,7 @@ async function uploadBlob(
 async function downloadBlob(drawingId: string, kind: SyncBlobKind): Promise<Blob | null> {
   const res = await fetch(`/api/sync/blobs/${encodeURIComponent(drawingId)}/${kind}`, {
     method: 'GET',
+    signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) return null
   return res.blob()
@@ -301,6 +303,7 @@ async function pushMetadataItems(
 
     const res = await fetch('/api/sync/push', {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folders, drawings }),
     })
@@ -376,7 +379,10 @@ async function runSyncCycle(user: SyncUser, options: SyncOptions): Promise<SyncS
   emit(await getSyncSnapshot('syncing'))
 
   // 1. Check server sync status
-  const statusRes = await fetch('/api/sync/status', { method: 'GET' })
+  const statusRes = await fetch('/api/sync/status', {
+    method: 'GET',
+    signal: AbortSignal.timeout(15_000),
+  })
   if (statusRes.status === 503) {
     const body = await statusRes.json().catch(() => ({})) as { code?: string }
     if (body.code === 'SYNC_NOT_CONFIGURED') {
@@ -507,7 +513,10 @@ async function runSyncCycle(user: SyncUser, options: SyncOptions): Promise<SyncS
   let hasMore = true
 
   while (hasMore) {
-    const pullRes = await fetch(`/api/sync/pull?since=${lastSeq}`, { method: 'GET' })
+    const pullRes = await fetch(`/api/sync/pull?since=${lastSeq}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(15_000),
+    })
     if (!pullRes.ok) {
       throw new Error(`Sync pull failed (${pullRes.status})`)
     }

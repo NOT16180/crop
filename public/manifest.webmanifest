@@ -1,7 +1,7 @@
 {
   "name": "Crop — drawing library",
   "short_name": "Crop",
-  "description": "A personal library for your drawings: tag whole images or specific areas, then find them by tag. Your images stay in your browser.",
+  "description": "A personal library for your drawings: tag whole images or specific areas, then find them by tag. Works offline in your browser with optional cloud sync.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

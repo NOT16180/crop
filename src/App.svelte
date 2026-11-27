@@ -255,6 +255,17 @@
     window.addEventListener('online', () => {
       if (accountSession) void runAccountSync()
     })
+    window.addEventListener('pagehide', () => {
+      if (pendingDeletedDrawings.length) {
+        const committed = pendingDeletedDrawings
+        pendingDeletedDrawings = []
+        if (deleteTimer) {
+          clearTimeout(deleteTimer)
+          deleteTimer = undefined
+        }
+        commitPendingDeletes(committed)
+      }
+    })
     try {
       await removeLegacyAnalysisData()
     } catch {
@@ -1186,7 +1197,11 @@
 
 <details class="data-warning">
   <summary>
-    <strong>Your library stays in this browser.</strong> Keep a backup of it.
+    {#if accountSession}
+      <strong>Cloud sync enabled</strong> ({accountSession.user.email}) · local offline copy active.
+    {:else}
+      <strong>Your library stays in this browser</strong> until you sign in. Keep a backup of it.
+    {/if}
     {#if storageUsage}<span class="storage-usage">{formatFileSize(storageUsage.usage)} of {formatFileSize(storageUsage.quota)} used</span>{/if}
     {#if !installed}
       <span class="install-line">
@@ -1197,7 +1212,11 @@
       </span>
     {/if}
   </summary>
-  <p>Crop stores images and tags in this browser on this device only; nothing is uploaded. Keep the original files and download a <strong>Backup</strong> regularly — clearing browser data or losing access to this device may erase your library.</p>
+  {#if accountSession}
+    <p>Your drawings, folders, and tags stay stored locally for offline use and sync to your account (up to 100 MB cloud storage). Keep original files and download a <strong>Backup</strong> ZIP for large libraries.</p>
+  {:else}
+    <p>Without an account, Crop stores images and tags on this device only; nothing is uploaded. Sign in from <strong>Menu → Sign in</strong> to sync across devices, or download a <strong>Backup</strong> regularly.</p>
+  {/if}
   {#if !installed}
     <p>Installing Crop keeps it working with no network and protects its storage from automatic cleanup.</p>
   {/if}
@@ -1280,7 +1299,7 @@
   {#if showHelp}
     <article class="help-page">
       <h2>How to use the image library</h2>
-      <p>Crop is a personal library for your drawings. Add tags to whole images or specific areas, then search those tags to find the drawing or detail you need. Your library stays in this browser on this device; Crop does not upload your images.</p>
+      <p>Crop is a personal library for your drawings. Add tags to whole images or specific areas, then search those tags to find the drawing or detail you need. It works offline in your browser and can sync across devices when you sign in.</p>
 
       <p>Add PNG, JPG, WebP, or AVIF images with <strong>Add</strong>, by dropping files onto the page, or by pasting a screenshot. Files the browser cannot decode are reported individually.</p>
 
@@ -1293,8 +1312,8 @@
       <h3>Organize your library</h3>
       <p>Create folders from the Folders menu and move images using the folder control in the viewer or the bulk selection tools. Deleting a folder keeps its images and tags; they become unfiled under All images.</p>
 
-      <h3>Backups and display</h3>
-      <p>Your drawings are stored only in this browser. Download a <strong>Backup</strong> ZIP regularly and keep a copy somewhere safe, especially before clearing browser data or moving devices. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
+      <h3>Cloud sync, backups, and display</h3>
+      <p>Your drawings are always stored locally in this browser so Crop works offline. Sign in from <strong>Menu → Sign in</strong> to sync up to 100 MB across devices. You can also download a <strong>Backup</strong> ZIP anytime and keep a copy somewhere safe. <strong>Restore</strong> merges its images and folders into the current library; it does not replace existing drawings and cannot be undone. Switch between light and dark mode with the theme button.</p>
 
       <h3>Share a set of references</h3>
       <p><strong>Export sheet</strong> turns the images currently shown into a single PNG sheet: tagged areas are cropped, tag names are written under each tile, and the address of Crop is printed at the bottom. Choose how many images the sheet holds with the <strong>Sheet</strong> menu next to it — or <em>All images</em> to export every result.</p>
@@ -1312,11 +1331,15 @@
   {#if drawings.length === 0}
     <section class="empty">
       <h2>Your library is empty</h2>
-      <p>Drop images here (PNG, JPG, WebP), or click “Add images”.</p>
+      <p>Drop images here (PNG, JPG, WebP, or AVIF), or click “Add images”.</p>
       {#if !installed && installEvent}
         <p class="empty-install"><button type="button" onclick={installApp}>Install Crop</button></p>
       {/if}
-      <p>Your library stays in this browser on this device. Keep the original files and use Backup regularly; clearing browser data can erase your library.</p>
+      {#if accountSession}
+        <p>Signed in as <strong>{accountSession.user.email}</strong>. Images you add here will sync across your devices (up to 100 MB cloud storage).</p>
+      {:else}
+        <p>Your library stays in this browser on this device until you sign in. Keep the original files and use Backup regularly, or sign in to sync across devices.</p>
+      {/if}
     </section>
   {:else}
     {#if hasFilters}

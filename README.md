@@ -1,6 +1,6 @@
 # Crop
 
-**Crop is an early version of a personal drawing library.** It helps you organize images with manually assigned tags and find drawings or specific areas within them. Images and tags stay in IndexedDB in the browser. Email account sign-in is implemented as the first step toward cloud sync; signing in does not upload the library. It requires the Cloudflare and email settings below before it can be used on the deployed site.
+**Crop is an early version of a personal drawing library.** It helps you organize images with manually assigned tags and find drawings or specific areas within them. Images and tags are stored locally in IndexedDB for instant offline use, with optional email-link sign-in and cloud sync across devices (Cloudflare D1 + R2, 100 MB default quota per account).
 
 ## Try Crop locally
 
@@ -30,7 +30,7 @@ Open the address shown in the terminal (usually http://localhost:5173).
 
 ## Data and privacy
 
-Drawings and tags are stored in IndexedDB in your browser. The selected theme is stored in local storage. Accounts currently provide sign-in only and do not upload or sync drawings, so each browser still has its own library. Clearing this site's browser data may erase the library. Keep the original image files too, and make backups regularly.
+Drawings and tags are stored locally in IndexedDB so Crop works offline. The selected theme is stored in local storage. When signed in, folders, drawings, tags, and image blobs sync to your account via Cloudflare D1 and R2 (up to 100 MB per account, 20 MB per image); without an account, nothing is uploaded. Keep the original image files too, and make backups regularly.
 
 Crop asks the browser for persistent storage when it starts and again after the first import, and shows how much room the library takes. Browsers grant persistence to apps they trust, so installing Crop is the reliable way to keep a library out of reach of automatic cleanup.
 
