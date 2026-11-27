@@ -601,11 +601,25 @@
       : selectedTagLabels.filter((selected) => selected !== key)
   }
 
+  function plainTags(tags: Tag[]): Tag[] {
+    return tags.map((tag) => ({
+      id: tag.id,
+      label: tag.label,
+      box: tag.box ? ([tag.box[0], tag.box[1], tag.box[2], tag.box[3]] as Rect) : null,
+    }))
+  }
+
+  function plainIds(ids: string[] | undefined): string[] | undefined {
+    return ids ? [...ids] : undefined
+  }
+
   async function saveTags(id: string, tags: Tag[]) {
     try {
-      await db.drawings.update(id, { tags, visibleTagIds })
+      const nextTags = plainTags(tags)
+      const nextVisible = [...visibleTagIds]
+      await db.drawings.update(id, { tags: nextTags, visibleTagIds: nextVisible })
       markDrawingChanged(id)
-      drawings = drawings.map((d) => (d.id === id ? { ...d, tags, visibleTagIds } : d))
+      drawings = drawings.map((d) => (d.id === id ? { ...d, tags: nextTags, visibleTagIds: nextVisible } : d))
       error = ''
     } catch (cause) {
       console.error('Could not save the tag', cause)
@@ -628,12 +642,13 @@
     const tag: Tag = { id: crypto.randomUUID(), label, box }
     error = ''
     try {
+      const nextTags = [...plainTags(drawing.tags), tag]
       const nextVisibleTagIds = [...new Set([...visibleTagIds, tag.id])]
-      await db.drawings.update(drawing.id, { tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds })
+      await db.drawings.update(drawing.id, { tags: nextTags, visibleTagIds: nextVisibleTagIds })
       markDrawingChanged(drawing.id)
       visibleTagIds = nextVisibleTagIds
       drawings = drawings.map((item) => item.id === drawing.id
-        ? { ...item, tags: [...drawing.tags, tag], visibleTagIds: nextVisibleTagIds }
+        ? { ...item, tags: nextTags, visibleTagIds: nextVisibleTagIds }
         : item)
       tagInput = ''
       selection = null
@@ -644,10 +659,10 @@
   }
 
   async function removeTag(drawing: DrawingRecord, tagId: string) {
-    const tags = drawing.tags.filter((tag) => tag.id !== tagId)
+    const tags = plainTags(drawing.tags.filter((tag) => tag.id !== tagId))
     if (tags.length === drawing.tags.length) return
-    const nextVisibleTagIds = (drawing.visibleTagIds ?? drawing.tags.map((tag) => tag.id))
-      .filter((id) => id !== tagId)
+    const nextVisibleTagIds = [...(drawing.visibleTagIds ?? drawing.tags.map((tag) => tag.id))
+      .filter((id) => id !== tagId)]
     try {
       await db.drawings.update(drawing.id, { tags, visibleTagIds: nextVisibleTagIds })
       markDrawingChanged(drawing.id)
@@ -676,8 +691,8 @@
           if (original && (original.tags !== drawing.tags || original.visibleTagIds !== drawing.visibleTagIds)) {
             updatedIds.push(drawing.id)
             await db.drawings.update(drawing.id, {
-              tags: drawing.tags,
-              visibleTagIds: drawing.visibleTagIds,
+              tags: plainTags(drawing.tags),
+              visibleTagIds: plainIds(drawing.visibleTagIds),
             })
           }
         }
@@ -713,8 +728,8 @@
           if (original && original.tags.length !== drawing.tags.length) {
             updatedIds.push(drawing.id)
             await db.drawings.update(drawing.id, {
-              tags: drawing.tags,
-              visibleTagIds: drawing.visibleTagIds,
+              tags: plainTags(drawing.tags),
+              visibleTagIds: plainIds(drawing.visibleTagIds),
             })
           }
         }
@@ -759,7 +774,8 @@
       ? [...new Set([...visibleTagIds, tagId])]
       : visibleTagIds.filter((id) => id !== tagId)
     if (!viewer) return
-    await db.drawings.update(viewer.id, { visibleTagIds })
+    const nextVisible = [...visibleTagIds]
+    await db.drawings.update(viewer.id, { visibleTagIds: nextVisible })
     markDrawingChanged(viewer.id)
     drawings = drawings.map((drawing) => drawing.id === viewer!.id
       ? { ...drawing, visibleTagIds }
@@ -772,7 +788,8 @@
       ? [...new Set([...visibleTagIds, ...tagIds])]
       : visibleTagIds.filter((id) => !ids.has(id))
     if (!viewer) return
-    await db.drawings.update(viewer.id, { visibleTagIds })
+    const nextVisible = [...visibleTagIds]
+    await db.drawings.update(viewer.id, { visibleTagIds: nextVisible })
     markDrawingChanged(viewer.id)
     drawings = drawings.map((drawing) => drawing.id === viewer!.id
       ? { ...drawing, visibleTagIds }
@@ -801,9 +818,22 @@
     const drawingsToRestore = pendingDeletedDrawings
     if (deleteTimer) clearTimeout(deleteTimer)
     deleteTimer = undefined
-    const restored = drawingsToRestore.map((drawing) => drawing.folderId && !folders.some((folder) => folder.id === drawing.folderId)
-      ? { ...drawing, folderId: undefined }
-      : drawing)
+    const restored: DrawingRecord[] = drawingsToRestore.map((drawing) => ({
+      id: drawing.id,
+      name: drawing.name,
+      createdAt: drawing.createdAt,
+      updatedAt: drawing.updatedAt,
+      width: drawing.width,
+      height: drawing.height,
+      blob: drawing.blob,
+      thumb: drawing.thumb,
+      tags: plainTags(drawing.tags),
+      folderId: drawing.folderId && !folders.some((folder) => folder.id === drawing.folderId)
+        ? undefined
+        : drawing.folderId,
+      position: drawing.position,
+      visibleTagIds: plainIds(drawing.visibleTagIds),
+    }))
     await db.drawings.bulkAdd(restored)
     pendingDeletedDrawings = []
     await reload()
@@ -1122,7 +1152,7 @@
       return { id, tags, visibleTagIds }
     }).filter((u): u is { id: string; tags: Tag[]; visibleTagIds: string[] } => u !== null)
     if (!updates.length) return
-    await Promise.all(updates.map(({ id, tags, visibleTagIds }) => db.drawings.update(id, { tags, visibleTagIds })))
+    await Promise.all(updates.map(({ id, tags, visibleTagIds }) => db.drawings.update(id, { tags: plainTags(tags), visibleTagIds: plainIds(visibleTagIds) })))
     markDrawingsChanged(updates.map(({ id }) => id))
     const tagMap = new Map(updates.map((u) => [u.id, u.tags]))
     const visibleMap = new Map(updates.map((u) => [u.id, u.visibleTagIds]))
