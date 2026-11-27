@@ -7,6 +7,7 @@ import { magicLink } from 'better-auth/plugins'
 import {
   AUTH_SCHEMA_CONFIG,
   getAuthCallbackErrorMessage,
+  isTrustedSameOriginRequest,
   resolveAuthBaseURL,
   withAuthSecurityHeaders,
 } from '../src/lib/auth-config.ts'
@@ -203,4 +204,52 @@ test('end-to-end magic link account creation, hashed token storage, session, rep
   assert.equal(blockedRes.status, 429)
 
   db.close()
+})
+
+test('isTrustedSameOriginRequest blocks cross-site mutating requests and allows same-origin requests', () => {
+  const origin = 'https://crop.notgalerie.com'
+  assert.equal(
+    isTrustedSameOriginRequest(new Request(`${origin}/api/sync/status`, { method: 'GET' }), origin),
+    true,
+  )
+  assert.equal(
+    isTrustedSameOriginRequest(
+      new Request(`${origin}/api/sync/push`, {
+        method: 'POST',
+        headers: { Origin: origin, 'Sec-Fetch-Site': 'same-origin' },
+      }),
+      origin,
+    ),
+    true,
+  )
+  assert.equal(
+    isTrustedSameOriginRequest(
+      new Request(`${origin}/api/sync/push`, {
+        method: 'POST',
+        headers: { Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site' },
+      }),
+      origin,
+    ),
+    false,
+  )
+  assert.equal(
+    isTrustedSameOriginRequest(
+      new Request(`${origin}/api/sync/account`, {
+        method: 'DELETE',
+        headers: { 'Sec-Fetch-Site': 'cross-site' },
+      }),
+      origin,
+    ),
+    false,
+  )
+  assert.equal(
+    isTrustedSameOriginRequest(
+      new Request(`${origin}/api/sync/account`, {
+        method: 'DELETE',
+        headers: { 'Sec-Fetch-Mode': 'cors' },
+      }),
+      origin,
+    ),
+    false,
+  )
 })

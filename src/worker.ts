@@ -1,5 +1,5 @@
 import { createAuth, type AuthEnv } from './lib/auth'
-import { resolveAuthBaseURL, withAuthSecurityHeaders } from './lib/auth-config'
+import { isTrustedSameOriginRequest, resolveAuthBaseURL, withAuthSecurityHeaders } from './lib/auth-config'
 import {
   deleteUserAccountData,
   handleSyncRequest,
@@ -52,6 +52,21 @@ export default {
       if (!env.BETTER_AUTH_SECRET || !env.AUTH_URL) {
         return withAuthSecurityHeaders(
           Response.json({ error: 'Authentication is not configured', code: 'AUTH_NOT_CONFIGURED' }, { status: 503 }),
+        )
+      }
+
+      let canonicalOrigin: string
+      try {
+        canonicalOrigin = resolveAuthBaseURL(env.AUTH_URL)
+      } catch {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Authentication is misconfigured', code: 'AUTH_MISCONFIGURED' }, { status: 503 }),
+        )
+      }
+
+      if (!isTrustedSameOriginRequest(request, canonicalOrigin)) {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Cross-origin request forbidden', code: 'FORBIDDEN_ORIGIN' }, { status: 403 }),
         )
       }
 

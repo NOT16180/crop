@@ -79,6 +79,39 @@ export function withAuthSecurityHeaders(response: Response): Response {
   })
 }
 
+/**
+ * Defense-in-depth CSRF check for state-changing /api/sync/* requests
+ * (POST, PUT, DELETE). Rejects requests whose Origin or Sec-Fetch-Site
+ * indicates a cross-site initiator.
+ */
+export function isTrustedSameOriginRequest(request: Request, canonicalOrigin: string): boolean {
+  const method = request.method.toUpperCase()
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return true
+
+  const secFetchSite = request.headers.get('Sec-Fetch-Site')?.trim().toLowerCase()
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    return false
+  }
+
+  const origin = request.headers.get('Origin')?.trim()
+  if (origin) {
+    return origin === canonicalOrigin
+  }
+
+  const referer = request.headers.get('Referer')?.trim()
+  if (referer) {
+    try {
+      return new URL(referer).origin === canonicalOrigin
+    } catch {
+      return false
+    }
+  }
+
+  // Browser fetch/XHR for mutating requests always includes Origin; block missing Origin when Sec-Fetch-Mode is set.
+  if (request.headers.get('Sec-Fetch-Mode')) return false
+  return true
+}
+
 export function getAuthCallbackErrorMessage(errorCode: string | null): string | null {
   if (!errorCode) return null
   switch (errorCode.trim().toUpperCase()) {

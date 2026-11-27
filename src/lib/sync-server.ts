@@ -309,7 +309,7 @@ async function handleGetBlob(
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Cache-Control': 'private, max-age=31536000, immutable',
+      'Cache-Control': 'private, no-store',
     },
   })
 }
@@ -626,9 +626,10 @@ export async function deleteUserAccountData(deps: {
   await deps.db.prepare('DELETE FROM session WHERE user_id = ?').bind(deps.userId).run()
   await deps.db.prepare('DELETE FROM account WHERE user_id = ?').bind(deps.userId).run()
   if (deps.userEmail) {
+    const escapedEmail = deps.userEmail.replace(/[\\%_"]/g, (ch) => `\\${ch}`)
     await deps.db
-      .prepare('DELETE FROM verification WHERE value LIKE ?')
-      .bind(`%"email":"${deps.userEmail}"%`)
+      .prepare("DELETE FROM verification WHERE value LIKE ? ESCAPE '\\'")
+      .bind(`%"email":"${escapedEmail}"%`)
       .run()
   }
   await deps.db.prepare('DELETE FROM user WHERE id = ?').bind(deps.userId).run()
