@@ -4,6 +4,7 @@ import {
   MAX_PULL_LIMIT,
   MAX_PUSH_ITEMS,
   MAX_THUMB_BLOB_BYTES,
+  detectImageMime,
   isValidBlobKind,
   isValidSyncId,
   normalizeImageMime,
@@ -223,6 +224,11 @@ async function handlePutBlob(
     return jsonNoStore({ error: 'Image exceeds maximum allowed size', code: 'FILE_TOO_LARGE', maxBytes }, 413)
   }
 
+  const detectedMime = detectImageMime(new Uint8Array(bytes))
+  if (!detectedMime) {
+    return jsonNoStore({ error: 'File content is not a valid supported image', code: 'INVALID_IMAGE_SIGNATURE' }, 415)
+  }
+
   const storage = await ensureUserStorage(deps.db, deps.userId, now)
   const existingBlob = await deps.db
     .prepare('SELECT size FROM sync_blob WHERE user_id = ? AND drawing_id = ? AND kind = ?')
@@ -247,7 +253,7 @@ async function handlePutBlob(
   }
 
   const key = r2BlobKey(deps.userId, drawingId, kind)
-  await deps.blobs.put(key, bytes, { httpMetadata: { contentType: mime } })
+  await deps.blobs.put(key, bytes, { httpMetadata: { contentType: detectedMime } })
   await deps.db
     .prepare(
       `INSERT INTO sync_blob (user_id, drawing_id, kind, size, mime, updated_at)
@@ -255,7 +261,7 @@ async function handlePutBlob(
        ON CONFLICT(user_id, drawing_id, kind)
        DO UPDATE SET size = excluded.size, mime = excluded.mime, updated_at = excluded.updated_at`,
     )
-    .bind(deps.userId, drawingId, kind, bytes.byteLength, mime, now)
+    .bind(deps.userId, drawingId, kind, bytes.byteLength, detectedMime, now)
     .run()
 
   const finalUsed = await recalculateUsedBytes(deps.db, deps.userId, now)

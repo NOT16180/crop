@@ -104,3 +104,49 @@ export function formatStorageBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+function asciiAt(bytes: Uint8Array, offset: number, length: number): string {
+  let out = ''
+  for (let i = 0; i < length; i++) {
+    out += String.fromCharCode(bytes[offset + i] ?? 0)
+  }
+  return out
+}
+
+/**
+ * Inspect the leading magic bytes of an uploaded buffer to confirm it is
+ * genuinely a PNG, JPEG, WebP, or AVIF image rather than a spoofed file.
+ */
+export function detectImageMime(bytes: Uint8Array): string | null {
+  if (bytes.byteLength >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) {
+    return 'image/png'
+  }
+
+  if (bytes.byteLength >= 3 &&
+      bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg'
+  }
+
+  if (bytes.byteLength >= 12 &&
+      asciiAt(bytes, 0, 4) === 'RIFF' &&
+      asciiAt(bytes, 8, 4) === 'WEBP') {
+    return 'image/webp'
+  }
+
+  if (bytes.byteLength >= 12 && asciiAt(bytes, 4, 4) === 'ftyp') {
+    const major = asciiAt(bytes, 8, 4)
+    if (major === 'avif' || major === 'avis') return 'image/avif'
+    if (major === 'mif1' || major === 'msf1') {
+      const boxSize = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0
+      const limit = Math.min(bytes.byteLength, boxSize || bytes.byteLength, 128)
+      for (let offset = 16; offset + 4 <= limit; offset += 4) {
+        const brand = asciiAt(bytes, offset, 4)
+        if (brand === 'avif' || brand === 'avis') return 'image/avif'
+      }
+    }
+  }
+
+  return null
+}

@@ -3,7 +3,38 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { handleSyncRequest } from '../src/lib/sync-server.ts'
-import { formatStorageBytes, isValidSyncId, r2BlobKey } from '../src/lib/sync-protocol.ts'
+import { detectImageMime, formatStorageBytes, isValidSyncId, r2BlobKey } from '../src/lib/sync-protocol.ts'
+
+function makePngBytes(size) {
+  const buf = new Uint8Array(size)
+  buf.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+  return buf
+}
+
+function makeWebpBytes(size) {
+  const buf = new Uint8Array(size)
+  buf.set([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50], 0)
+  return buf
+}
+
+function makeJpegBytes(size) {
+  const buf = new Uint8Array(size)
+  buf.set([0xff, 0xd8, 0xff, 0xe0], 0)
+  return buf
+}
+
+function makeAvifBytes(size) {
+  const buf = new Uint8Array(size)
+  // ftyp box: size=24, type='ftyp', major='mif1', minor=0, compat='avif'
+  buf.set([
+    0x00, 0x00, 0x00, 0x18,
+    0x66, 0x74, 0x79, 0x70,
+    0x6d, 0x69, 0x66, 0x31,
+    0x00, 0x00, 0x00, 0x00,
+    0x61, 0x76, 0x69, 0x66,
+  ], 0)
+  return buf
+}
 
 function createD1Adapter(sqlite) {
   return {
@@ -111,7 +142,7 @@ test('full sync flow: blob upload, push, pull, LWW conflict, tombstone delete an
     new Request(`${base}/api/sync/blobs/draw-1/thumb`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/webp' },
-      body: new Uint8Array(40).fill(1),
+      body: makeWebpBytes(40),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -121,7 +152,7 @@ test('full sync flow: blob upload, push, pull, LWW conflict, tombstone delete an
     new Request(`${base}/api/sync/blobs/draw-1/original`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array(120).fill(2),
+      body: makePngBytes(120),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -133,7 +164,7 @@ test('full sync flow: blob upload, push, pull, LWW conflict, tombstone delete an
     new Request(`${base}/api/sync/blobs/draw-2/original`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array(80).fill(3),
+      body: makePngBytes(80),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -146,7 +177,7 @@ test('full sync flow: blob upload, push, pull, LWW conflict, tombstone delete an
     new Request(`${base}/api/sync/blobs/draw-3/original`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array(30).fill(4),
+      body: makePngBytes(30),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -257,7 +288,7 @@ test('full sync flow: blob upload, push, pull, LWW conflict, tombstone delete an
     new Request(`${base}/api/sync/blobs/draw-2/original`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array(80).fill(3),
+      body: makePngBytes(80),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -287,7 +318,7 @@ test('strict multi-user isolation and mixed pagination never leak or skip record
     new Request(`${base}/api/sync/blobs/shared-id/original`, {
       method: 'PUT',
       headers: { 'Content-Type': 'image/png' },
-      body: new Uint8Array([9, 8, 7, 6]),
+      body: makePngBytes(16),
     }),
     { db, blobs, userId: 'user-a' },
   )
@@ -355,6 +386,51 @@ test('strict multi-user isolation and mixed pagination never leak or skip record
 
   assert.deepEqual(seenFolders, ['f1', 'f2', 'f3'])
   assert.deepEqual(seenDrawings, ['shared-id'])
+
+  sqlite.close()
+})
+
+test('detectImageMime and blob upload reject spoofed non-image files (HTML, ZIP, EXE, text)', async () => {
+  assert.equal(detectImageMime(makePngBytes(16)), 'image/png')
+  assert.equal(detectImageMime(makeJpegBytes(16)), 'image/jpeg')
+  assert.equal(detectImageMime(makeWebpBytes(16)), 'image/webp')
+  assert.equal(detectImageMime(makeAvifBytes(24)), 'image/avif')
+  assert.equal(detectImageMime(new TextEncoder().encode('<html><script>alert(1)</script></html>')), null)
+  assert.equal(detectImageMime(new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00])), null) // ZIP
+  assert.equal(detectImageMime(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])), null) // PDF
+
+  const { sqlite, db, blobs } = setupSyncTestEnv()
+  const base = 'https://crop.example.com'
+
+  // Spoofed HTML sent with Content-Type: image/png must be rejected with 415 INVALID_IMAGE_SIGNATURE
+  const spoofedRes = await handleSyncRequest(
+    new Request(`${base}/api/sync/blobs/evil-1/original`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: new TextEncoder().encode('<!doctype html><script>alert(1)</script>'),
+    }),
+    { db, blobs, userId: 'user-a' },
+  )
+  assert.equal(spoofedRes.status, 415)
+  assert.equal((await spoofedRes.json()).code, 'INVALID_IMAGE_SIGNATURE')
+  assert.equal(blobs.store.size, 0)
+
+  // Real JPEG uploaded with mismatched Content-Type: image/png is stored with verified MIME image/jpeg
+  const mismatchedRes = await handleSyncRequest(
+    new Request(`${base}/api/sync/blobs/real-jpg/original`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/png' },
+      body: makeJpegBytes(32),
+    }),
+    { db, blobs, userId: 'user-a' },
+  )
+  assert.equal(mismatchedRes.status, 200)
+  const fetched = await handleSyncRequest(
+    new Request(`${base}/api/sync/blobs/real-jpg/original`),
+    { db, blobs, userId: 'user-a' },
+  )
+  assert.equal(fetched.status, 200)
+  assert.equal(fetched.headers.get('Content-Type'), 'image/jpeg')
 
   sqlite.close()
 })
