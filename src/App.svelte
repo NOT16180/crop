@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
-  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings } from './lib/images'
+  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings, detectCompressionFormat, type CompressionFormat } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
@@ -11,6 +11,7 @@
     getSyncSnapshot,
     queueDrawingDeletes,
     queueDrawingUpsert,
+    queueDrawingUpserts,
     queueFolderDelete,
     queueFolderUpsert,
     scheduleSync,
@@ -48,6 +49,7 @@
   let error = $state('')
   let theme = $state<'dark' | 'light'>('dark')
   let compressWebp = $state(false)
+  let compressionFormat = $state<CompressionFormat>('webp')
   let showHelp = $state(false)
   let menuOpen = $state(false)
   let showAccount = $state(false)
@@ -242,6 +244,7 @@
 
   onMount(async () => {
     void refreshAccountSession()
+    void detectCompressionFormat().then((fmt) => { compressionFormat = fmt })
     const authParams = new URLSearchParams(window.location.search)
     const authError = getAuthCallbackErrorMessage(authParams.get('error'))
     if (authError) {
@@ -413,17 +416,23 @@
   async function handleCompressExistingLibrary(onProgress: (done: number, total: number) => void) {
     const result = await compressExistingDrawings(onProgress)
     if (result.compressedIds.length) {
-      await Promise.all(result.compressedIds.map((id) => queueDrawingUpsert(id, { needsBlobUpload: true })))
+      await queueDrawingUpserts(result.compressedIds, { needsBlobUpload: true })
       await reload()
       await refreshStorageUsage()
       if (accountSession) {
-        await runAccountSync()
+        try {
+          await runAccountSync()
+        } catch (cause) {
+          console.error('Post-compression sync failed', cause)
+        }
       }
     }
     return {
       total: result.total,
       compressedCount: result.compressedIds.length,
       savedBytes: result.savedBytes,
+      skippedCount: result.skippedCount,
+      format: result.format,
     }
   }
 
@@ -1246,6 +1255,7 @@
   {menuOpen}
   {theme}
   {compressWebp}
+  {compressionFormat}
   {showHelp}
   {accountSession}
   {syncState}
@@ -1288,6 +1298,7 @@
   session={accountSession}
   {syncState}
   {compressWebp}
+  {compressionFormat}
   drawingCount={drawings.length}
   initialMessage={accountMessage}
   onclose={closeAccount}
@@ -1460,7 +1471,7 @@
       <p>Crop is a personal drawing and reference library. Tag whole images or specific cropped areas, search details instantly, work offline in your browser, and sync across devices when signed in.</p>
 
       <h3>1. Add images</h3>
-      <p>Click <strong>Add images</strong>, drag files onto the page, or paste a screenshot with <strong>Ctrl+V / ⌘V</strong>. Crop supports <strong>PNG, JPG, WebP, and AVIF</strong>; files the browser cannot decode are reported individually.</p>
+      <p>Click <strong>Add images</strong>, drag files onto the page, or paste a screenshot with <strong>Ctrl+V / ⌘V</strong>. Crop supports <strong>PNG, JPG, WebP, and AVIF</strong>; files the browser cannot decode are reported individually. Optional image compression (in <strong>Menu</strong> or <strong>Account</strong>) resizes oversized images to 2400 px and encodes <strong>WebP</strong> on desktop/Android or high-quality <strong>JPEG</strong> on iPhone/Safari (where WebKit cannot encode WebP).</p>
 
       <h3>2. Tag whole images or specific areas</h3>
       <p>Open any image to add tags. Type a tag directly for the whole image, or drag a rectangle first to tag a specific area (you can resize crop boxes anytime). Use <strong>Manage tags</strong> (or <strong>Menu → Tag manager</strong>) to rename, merge without duplicates, or delete tags across your entire library.</p>

@@ -1,11 +1,45 @@
 import { db, type DrawingRecord, type Rect } from './db'
-import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from './image-validation'
-export { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from './image-validation'
+import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes, shouldSkipFallbackFormat } from './image-validation'
+export { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes, shouldSkipFallbackFormat } from './image-validation'
+
+export type CompressionFormat = 'webp' | 'jpeg'
 
 const THUMB_SIZE = 480
 export const WEBP_MAX_DIMENSION = 2400
 const WEBP_QUALITY = 0.84
 const JPEG_QUALITY = 0.82
+
+let detectedFormatPromise: Promise<CompressionFormat> | null = null
+
+/** Probe once whether this browser can genuinely encode WebP via canvas (Safari/iOS falls back to JPEG). */
+export function detectCompressionFormat(): Promise<CompressionFormat> {
+  if (detectedFormatPromise) return detectedFormatPromise
+  detectedFormatPromise = (async (): Promise<CompressionFormat> => {
+    try {
+      const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
+        ? new OffscreenCanvas(2, 2)
+        : Object.assign(document.createElement('canvas'), { width: 2, height: 2 })
+      try {
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return 'jpeg'
+        ctx.fillStyle = '#000'
+        ctx.fillRect(0, 0, 2, 2)
+        const blob = typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
+          ? await canvas.convertToBlob({ type: 'image/webp', quality: 0.8 })
+          : await new Promise<Blob | null>((resolve) => (canvas as HTMLCanvasElement).toBlob(resolve, 'image/webp', 0.8))
+        if (!blob) return 'jpeg'
+        const bytes = new Uint8Array(await blob.slice(0, 16).arrayBuffer())
+        return sniffImageType(bytes) === 'image/webp' ? 'webp' : 'jpeg'
+      } finally {
+        canvas.width = 0
+        canvas.height = 0
+      }
+    } catch {
+      return 'jpeg'
+    }
+  })()
+  return detectedFormatPromise
+}
 
 export interface ImportFailure {
   name: string
@@ -49,19 +83,25 @@ async function encodeCanvasBlob(
   const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
     ? new OffscreenCanvas(width, height)
     : Object.assign(document.createElement('canvas'), { width, height })
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Image canvas is unavailable')
-  if (fillBackground) {
-    context.fillStyle = fillBackground
-    context.fillRect(0, 0, width, height)
+  try {
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Image canvas is unavailable')
+    if (fillBackground) {
+      context.fillStyle = fillBackground
+      context.fillRect(0, 0, width, height)
+    }
+    context.drawImage(bitmap, 0, 0, width, height)
+    return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
+      ? await canvas.convertToBlob({ type, quality })
+      : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error('Could not encode image')),
+          type, quality,
+        ))
+  } finally {
+    // Immediately release GPU/bitmap backing memory (critical on iOS Safari).
+    canvas.width = 0
+    canvas.height = 0
   }
-  context.drawImage(bitmap, 0, 0, width, height)
-  return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
-    ? await canvas.convertToBlob({ type, quality })
-    : await new Promise<Blob>((resolve, reject) => (canvas as HTMLCanvasElement).toBlob(
-        (blob) => blob ? resolve(blob) : reject(new Error('Could not encode image')),
-        type, quality,
-      ))
 }
 
 /**
@@ -107,6 +147,15 @@ async function optimizeAsWebp(
   original: Blob,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const target = computeScaledDimensions(bitmap.width, bitmap.height, WEBP_MAX_DIMENSION)
+  let originalMime = original.type
+  if (!originalMime) {
+    try {
+      const head = new Uint8Array(await original.slice(0, 16).arrayBuffer())
+      originalMime = sniffImageType(head)
+    } catch {
+      originalMime = ''
+    }
+  }
   const formats: Array<{ type: string; quality: number; fillBackground?: string }> = [
     { type: 'image/webp', quality: WEBP_QUALITY },
     // Safari / iOS WebKit cannot encode WebP via canvas; fall back to high-quality JPEG.
@@ -114,6 +163,9 @@ async function optimizeAsWebp(
   ]
 
   for (const fmt of formats) {
+    if (shouldSkipFallbackFormat(originalMime, fmt.type, bitmap.width, bitmap.height, WEBP_MAX_DIMENSION)) {
+      return { blob: original, width: bitmap.width, height: bitmap.height }
+    }
     try {
       const candidate = await encodeCanvasBlob(
         bitmap,
@@ -274,33 +326,46 @@ export interface CompressLibraryResult {
   total: number
   compressedIds: string[]
   savedBytes: number
+  skippedCount: number
+  format: CompressionFormat
 }
 
 /**
- * Re-encode existing drawings in IndexedDB to high-quality WebP (max 2400 px),
- * rescaling any crop tag boxes proportionally so tags stay aligned.
+ * Re-encode existing drawings in IndexedDB one at a time (to keep peak RAM low
+ * on mobile Safari) to WebP or JPEG fallback (max 2400 px), rescaling any crop
+ * tag boxes proportionally so tags stay aligned.
  */
 export async function compressExistingDrawings(
   onProgress?: (done: number, total: number) => void,
 ): Promise<CompressLibraryResult> {
-  const all = await db.drawings.toArray()
+  const format = await detectCompressionFormat()
+  const ids = (await db.drawings.toCollection().primaryKeys()) as string[]
   const compressedIds: string[] = []
   let savedBytes = 0
+  let skippedCount = 0
 
-  for (let i = 0; i < all.length; i++) {
-    const drawing = all[i]
+  for (let i = 0; i < ids.length; i++) {
     let bitmap: ImageBitmap | undefined
     try {
+      const drawing = await db.drawings.get(ids[i])
+      if (!drawing || !drawing.blob) {
+        skippedCount++
+        continue
+      }
       bitmap = await createImageBitmap(drawing.blob)
       const optimized = await optimizeAsWebp(bitmap, drawing.blob)
       if (optimized.blob !== drawing.blob && optimized.blob.size < drawing.blob.size) {
         const rescaledTags = rescaleTagBoxes(
-          drawing.tags,
+          drawing.tags ?? [],
           drawing.width || bitmap.width,
           drawing.height || bitmap.height,
           optimized.width,
           optimized.height,
-        )
+        ).map((tag) => ({
+          id: tag.id,
+          label: tag.label,
+          box: tag.box ? ([tag.box[0], tag.box[1], tag.box[2], tag.box[3]] as Rect) : null,
+        }))
         const saved = drawing.blob.size - optimized.blob.size
         await db.drawings.update(drawing.id, {
           blob: optimized.blob,
@@ -313,12 +378,14 @@ export async function compressExistingDrawings(
         savedBytes += saved
       }
     } catch {
-      // Skip any unreadable image without blocking the rest of the library.
+      skippedCount++
     } finally {
       bitmap?.close()
-      onProgress?.(i + 1, all.length)
+      onProgress?.(i + 1, ids.length)
+      // Yield between drawings so mobile Safari can release decoded bitmaps.
+      await new Promise((resolve) => setTimeout(resolve, 0))
     }
   }
 
-  return { total: all.length, compressedIds, savedBytes }
+  return { total: ids.length, compressedIds, savedBytes, skippedCount, format }
 }

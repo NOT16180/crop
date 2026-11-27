@@ -127,6 +127,7 @@ header {
 .account-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .account-option { display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; line-height: 1.35; cursor: pointer; }
 .account-option input { margin-top: 2px; flex: 0 0 auto; }
+.account-hint { display: block; font-size: 0.76rem; line-height: 1.35; color: var(--muted); }
 .account-danger { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
 .danger-link, .danger-btn { color: #b91c1c; border-color: #b91c1c; }
 [data-theme="dark"] .danger-link, [data-theme="dark"] .danger-btn { color: #f87171; border-color: #f87171; }

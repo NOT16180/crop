@@ -9,6 +9,7 @@
     session: { user: { id: string; email: string; name: string } } | null
     syncState: SyncSnapshot | null
     compressWebp: boolean
+    compressionFormat: 'webp' | 'jpeg'
     drawingCount: number
     initialMessage?: string
     onclose: () => void
@@ -16,7 +17,7 @@
     ondeleteaccount: () => Promise<boolean>
     onsyncnow: (mode?: 'merge' | 'replace') => Promise<void>
     ontogglewebp: () => void
-    oncompressexisting: (onProgress: (done: number, total: number) => void) => Promise<{ total: number; compressedCount: number; savedBytes: number }>
+    oncompressexisting: (onProgress: (done: number, total: number) => void) => Promise<{ total: number; compressedCount: number; savedBytes: number; skippedCount: number; format: 'webp' | 'jpeg' }>
   }
 
   let {
@@ -24,6 +25,7 @@
     session,
     syncState,
     compressWebp,
+    compressionFormat,
     drawingCount,
     initialMessage = '',
     onclose,
@@ -163,13 +165,19 @@
       const result = await oncompressexisting((done, total) => {
         compressProgress = `${done} / ${total}`
       })
+      const fmtLabel = result.format.toUpperCase()
+      const skippedNote = result.skippedCount > 0
+        ? ` (${result.skippedCount} skipped)`
+        : ''
       if (result.compressedCount > 0) {
-        message = `Optimized ${result.compressedCount} of ${result.total} drawings (saved ${formatStorageBytes(result.savedBytes)}).`
+        message = `Optimized ${result.compressedCount} of ${result.total} drawings to ${fmtLabel} (saved ${formatStorageBytes(result.savedBytes)})${skippedNote}.`
       } else {
-        message = 'All existing drawings are already compact.'
+        message = `All existing drawings are already compact (${fmtLabel} on this device)${skippedNote}.`
       }
-    } catch {
-      message = 'Could not compress existing drawings.'
+    } catch (cause) {
+      console.error('Could not compress existing drawings', cause)
+      const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : ''
+      message = `Could not compress existing drawings${detail}.`
     } finally {
       compressProgress = ''
       busy = false
@@ -206,8 +214,19 @@
 
             <label class="account-option">
               <input type="checkbox" checked={compressWebp} onchange={ontogglewebp} />
-              <span>Compress new imports to WebP (max 2400px) to fit 4–5× more drawings in 100 MB</span>
+              {#if compressionFormat === 'webp'}
+                <span>Compress new imports to WebP (max 2400px) to fit 4–5× more drawings in 100 MB</span>
+              {:else}
+                <span>Compress new imports to JPEG on this device (max 2400px) to fit more drawings in 100 MB</span>
+              {/if}
             </label>
+            <small class="account-hint">
+              {#if compressionFormat === 'webp'}
+                This browser encodes WebP. On iPhone / Safari (which cannot encode WebP), Crop automatically uses high-quality JPEG instead.
+              {:else}
+                Safari / iPhone cannot encode WebP, so this device uses high-quality JPEG (max 2400px) and leaves existing WebP drawings untouched. Desktop and Android browsers encode WebP.
+              {/if}
+            </small>
             {#if drawingCount > 0}
               <button
                 type="button"

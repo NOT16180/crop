@@ -19,6 +19,18 @@ export function computeScaledDimensions(
   }
 }
 
+export function shouldSkipFallbackFormat(
+  originalMime: string,
+  targetMime: string,
+  width: number,
+  height: number,
+  maxDimension: number,
+): boolean {
+  if (targetMime !== 'image/jpeg') return false
+  if (originalMime !== 'image/webp' && originalMime !== 'image/avif') return false
+  return Math.max(width, height) <= maxDimension
+}
+
 export function rescaleTagBoxes<T extends { box: [number, number, number, number] | null }>(
   tags: T[],
   oldWidth: number,

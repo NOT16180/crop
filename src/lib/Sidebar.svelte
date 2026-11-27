@@ -6,6 +6,7 @@
     menuOpen: boolean
     theme: 'dark' | 'light'
     compressWebp: boolean
+    compressionFormat: 'webp' | 'jpeg'
     showHelp: boolean
     accountSession: { user: { email: string; name: string } } | null
     syncState: SyncSnapshot | null
@@ -24,6 +25,7 @@
     menuOpen,
     theme,
     compressWebp,
+    compressionFormat,
     showHelp,
     accountSession,
     syncState,
@@ -70,8 +72,10 @@
     type="button"
     aria-pressed={compressWebp}
     onclick={ontogglewebp}
-    title="Re-encode new imports to high-quality WebP (max 2400px) to fit 4–5x more drawings in 100 MB"
-  >WebP compression: {compressWebp ? 'On' : 'Off'}</button>
+    title={compressionFormat === 'webp'
+      ? 'Compress new imports to WebP (max 2400px) on this browser, or JPEG on iPhone/Safari'
+      : 'Compress new imports to JPEG (max 2400px) on Safari/iPhone; desktop and Android browsers encode WebP'}
+  >Compression: {compressWebp ? 'On' : 'Off'} ({compressionFormat.toUpperCase()})</button>
   <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); closeSafely() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
   <button type="button" class="side-menu-account" onclick={() => { blurIfInsideMenu(); onopenaccount() }}>
     {#if accountSession}

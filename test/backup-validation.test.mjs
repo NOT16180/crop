@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
-import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from '../src/lib/image-validation.ts'
+import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes, shouldSkipFallbackFormat } from '../src/lib/image-validation.ts'
 import { deduplicateTags, renameOrMergeTag, computeTagStats, areBoxesEqual } from '../src/lib/tags.ts'
 
 const folders = new Set(['folder-1'])
@@ -135,4 +135,12 @@ test('rescaleTagBoxes scales crop rectangles proportionally and leaves whole-ima
   const rescaled = rescaleTagBoxes(tags, 4000, 5000, 1920, 2400)
   assert.deepEqual(rescaled[0].box, [192, 480, 384, 288])
   assert.equal(rescaled[1].box, null)
+})
+
+test('shouldSkipFallbackFormat avoids re-encoding compact WebP/AVIF to JPEG on Safari/iOS', () => {
+  assert.equal(shouldSkipFallbackFormat('image/webp', 'image/jpeg', 2400, 1800, 2400), true)
+  assert.equal(shouldSkipFallbackFormat('image/avif', 'image/jpeg', 1200, 900, 2400), true)
+  assert.equal(shouldSkipFallbackFormat('image/webp', 'image/jpeg', 4000, 3000, 2400), false)
+  assert.equal(shouldSkipFallbackFormat('image/png', 'image/jpeg', 1200, 900, 2400), false)
+  assert.equal(shouldSkipFallbackFormat('image/webp', 'image/webp', 2400, 1800, 2400), false)
 })

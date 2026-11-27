@@ -92,7 +92,32 @@ export async function queueDrawingUpsert(
     deleted: false,
     needsBlobUpload,
     updatedAt,
-    blockedReason: needsBlobUpload ? existing?.blockedReason : undefined,
+    blockedReason: options.needsBlobUpload ? undefined : (needsBlobUpload ? existing?.blockedReason : undefined),
+  })
+}
+
+export async function queueDrawingUpserts(
+  ids: string[],
+  options: { needsBlobUpload?: boolean; updatedAt?: number } = {},
+): Promise<void> {
+  if (!ids.length) return
+  const updatedAt = options.updatedAt ?? Date.now()
+  await db.transaction('rw', db.drawings, db.syncOutbox, async () => {
+    for (const id of ids) {
+      await db.drawings.update(id, { updatedAt })
+      const key = outboxKey('drawing', id)
+      const existing = await db.syncOutbox.get(key)
+      const needsBlobUpload = Boolean(options.needsBlobUpload || existing?.needsBlobUpload)
+      await db.syncOutbox.put({
+        key,
+        entity: 'drawing',
+        id,
+        deleted: false,
+        needsBlobUpload,
+        updatedAt,
+        blockedReason: options.needsBlobUpload ? undefined : (needsBlobUpload ? existing?.blockedReason : undefined),
+      })
+    }
   })
 }
 
