@@ -334,7 +334,7 @@
 
   function markDrawingsChanged(ids: string[], needsBlobUpload = false) {
     if (!ids.length) return
-    void Promise.all(ids.map((id) => queueDrawingUpsert(id, { needsBlobUpload }))).then(() => triggerScheduledSync())
+    void queueDrawingUpserts(ids, { needsBlobUpload }).then(() => triggerScheduledSync())
   }
 
   function markFolderChanged(id: string) {
@@ -571,18 +571,26 @@
   }
 
   async function backupLibrary() {
+    error = ''
+    notice = 'Preparing backup ZIP…'
     try {
       const { downloadBackup } = await import('./lib/backup')
       await downloadBackup()
       notice = 'Backup downloaded.'
       error = ''
-    } catch {
-      error = 'Could not create the backup. Check available device storage and try again.'
+    } catch (cause) {
+      console.error('Could not create backup', cause)
+      notice = ''
+      error = cause instanceof Error && cause.message
+        ? `Could not create the backup (${cause.message}).`
+        : 'Could not create the backup. Check available device storage and try again.'
     }
   }
 
   async function restoreLibrary(file: File) {
     if (!confirm('Merge this backup into your current library? Its images and folders will be added; existing images will stay. Make a Backup first if you may want to undo this, because Restore cannot be undone.')) return
+    error = ''
+    notice = 'Restoring backup…'
     try {
       const { restoreBackup } = await import('./lib/backup')
       const result = await restoreBackup(file)
@@ -593,6 +601,7 @@
       notice = `Restored ${result.drawings} image${result.drawings === 1 ? '' : 's'} and ${result.folders} folder${result.folders === 1 ? '' : 's'}.`
       error = ''
     } catch (cause) {
+      notice = ''
       error = cause instanceof Error ? cause.message : 'Could not restore this backup.'
     }
   }

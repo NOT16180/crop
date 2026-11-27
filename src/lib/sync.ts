@@ -587,10 +587,15 @@ async function runSyncCycle(user: SyncUser, options: SyncOptions): Promise<SyncS
       if (existingLocal) {
         const dimensionsChanged =
           existingLocal.width !== remoteDrawing.width || existingLocal.height !== remoteDrawing.height
-        const refreshedBlob = dimensionsChanged ? await downloadBlob(remoteDrawing.id, 'original') : null
+        const thumbMissing = !existingLocal.thumb || existingLocal.thumb.size === 0
+        const [refreshedBlob, refreshedThumb] = await Promise.all([
+          dimensionsChanged ? downloadBlob(remoteDrawing.id, 'original') : Promise.resolve(null),
+          dimensionsChanged || thumbMissing ? downloadBlob(remoteDrawing.id, 'thumb') : Promise.resolve(null),
+        ])
         await db.drawings.put({
           ...existingLocal,
           blob: refreshedBlob ?? existingLocal.blob,
+          thumb: refreshedThumb ?? existingLocal.thumb,
           name: remoteDrawing.name,
           createdAt: remoteDrawing.createdAt,
           updatedAt: remoteDrawing.updatedAt,

@@ -2,7 +2,21 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
-import { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes, shouldSkipFallbackFormat } from '../src/lib/image-validation.ts'
+import {
+  computeScaledDimensions,
+  isAcceptedImage,
+  rescaleTagBoxes,
+  shouldAcceptReencode,
+  shouldSkipFallbackFormat,
+  syncFilenameExtension,
+} from '../src/lib/image-validation.ts'
+import {
+  createStreamingZip,
+  decodeUtf8,
+  encodeUtf8,
+  extractStreamingZip,
+  resolveRestoredImageMime,
+} from '../src/lib/backup-archive.ts'
 import { deduplicateTags, renameOrMergeTag, computeTagStats, areBoxesEqual } from '../src/lib/tags.ts'
 
 const folders = new Set(['folder-1'])
@@ -143,4 +157,129 @@ test('shouldSkipFallbackFormat avoids re-encoding compact WebP/AVIF to JPEG on S
   assert.equal(shouldSkipFallbackFormat('image/webp', 'image/jpeg', 4000, 3000, 2400), false)
   assert.equal(shouldSkipFallbackFormat('image/png', 'image/jpeg', 1200, 900, 2400), false)
   assert.equal(shouldSkipFallbackFormat('image/webp', 'image/webp', 2400, 1800, 2400), false)
+})
+
+test('shouldAcceptReencode prevents generation loss while accepting format changes, downscales, and big savings', () => {
+  // Tiny 3% drop on already-WebP image at same size -> reject (prevents generation loss on repeated clicks)
+  assert.equal(shouldAcceptReencode({
+    originalMime: 'image/webp',
+    targetMime: 'image/webp',
+    originalSize: 500_000,
+    newSize: 485_000,
+    originalWidth: 2000,
+    originalHeight: 1500,
+    newWidth: 2000,
+    newHeight: 1500,
+  }), false)
+
+  // Huge savings (>15% and >16 KB) on bloated JPEG at same size -> accept
+  assert.equal(shouldAcceptReencode({
+    originalMime: 'image/jpeg',
+    targetMime: 'image/jpeg',
+    originalSize: 2_000_000,
+    newSize: 600_000,
+    originalWidth: 2000,
+    originalHeight: 1500,
+    newWidth: 2000,
+    newHeight: 1500,
+  }), true)
+
+  // Format change PNG -> WebP with any size reduction -> accept
+  assert.equal(shouldAcceptReencode({
+    originalMime: 'image/png',
+    targetMime: 'image/webp',
+    originalSize: 40_000,
+    newSize: 38_000,
+    originalWidth: 800,
+    originalHeight: 600,
+    newWidth: 800,
+    newHeight: 600,
+  }), true)
+
+  // Dimension downscale -> accept if smaller
+  assert.equal(shouldAcceptReencode({
+    originalMime: 'image/jpeg',
+    targetMime: 'image/jpeg',
+    originalSize: 500_000,
+    newSize: 450_000,
+    originalWidth: 4000,
+    originalHeight: 3000,
+    newWidth: 2400,
+    newHeight: 1800,
+  }), true)
+
+  // Never accept larger or empty output
+  assert.equal(shouldAcceptReencode({
+    originalMime: 'image/png',
+    targetMime: 'image/webp',
+    originalSize: 100_000,
+    newSize: 105_000,
+    originalWidth: 1000,
+    originalHeight: 1000,
+    newWidth: 1000,
+    newHeight: 1000,
+  }), false)
+})
+
+test('syncFilenameExtension aligns downloaded filename extension with real image MIME type', () => {
+  assert.equal(syncFilenameExtension('sketch.png', 'image/webp'), 'sketch.webp')
+  assert.equal(syncFilenameExtension('photo.JPEG', 'image/webp'), 'photo.webp')
+  assert.equal(syncFilenameExtension('study.png', 'image/jpeg'), 'study.jpg')
+  assert.equal(syncFilenameExtension('untitled', 'image/webp'), 'untitled.webp')
+  assert.equal(syncFilenameExtension('drawing.png', 'application/octet-stream'), 'drawing.png')
+})
+
+test('streaming ZIP backup round-trips deflated JSON and stored binary images accurately', async () => {
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8])
+  const webpBytes = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x10, 0x00, 0x00, 0x00,
+    0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+  ])
+  const manifest = JSON.stringify({ format: 'crop-backup', version: 1, folders: [], drawings: [] })
+
+  const chunks = await createStreamingZip([
+    { name: 'manifest.json', data: encodeUtf8(manifest), compress: true },
+    { name: 'drawings/a.image', data: pngBytes, compress: false },
+    { name: 'drawings/b.image', data: webpBytes, compress: false },
+  ])
+  const totalLen = chunks.reduce((sum, c) => sum + c.byteLength, 0)
+  const merged = new Uint8Array(totalLen)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  const extracted = await extractStreamingZip(merged)
+  assert.equal(decodeUtf8(extracted.get('manifest.json')), manifest)
+  assert.deepEqual(extracted.get('drawings/a.image'), pngBytes)
+  assert.deepEqual(extracted.get('drawings/b.image'), webpBytes)
+  assert.equal(resolveRestoredImageMime(extracted.get('drawings/a.image')), 'image/png')
+  assert.equal(resolveRestoredImageMime(extracted.get('drawings/b.image')), 'image/webp')
+  assert.equal(resolveRestoredImageMime(encodeUtf8('<html>not an image</html>')), null)
+})
+
+test('extractStreamingZip enforces real decompressed size limits and rejects corrupt archives', async () => {
+  // Zip bomb simulation: 200 KB of zeros compresses tiny, but exceeds 50 KB safety limit
+  const bombData = new Uint8Array(200_000)
+  const bombChunks = await createStreamingZip([
+    { name: 'manifest.json', data: bombData, compress: true },
+  ])
+  const bombArchive = new Uint8Array(bombChunks.reduce((s, c) => s + c.byteLength, 0))
+  let pos = 0
+  for (const c of bombChunks) {
+    bombArchive.set(c, pos)
+    pos += c.byteLength
+  }
+
+  await assert.rejects(
+    () => extractStreamingZip(bombArchive, { maxUncompressedBytes: 50_000 }),
+    /browser safety limit/,
+  )
+
+  // Non-ZIP / corrupt data rejected cleanly
+  await assert.rejects(
+    () => extractStreamingZip(encodeUtf8('not a zip file at all 1234567890')),
+    /not a valid Crop backup/,
+  )
 })

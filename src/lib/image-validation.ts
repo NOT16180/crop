@@ -19,6 +19,20 @@ export function computeScaledDimensions(
   }
 }
 
+const MIME_EXTENSION: Record<string, string> = {
+  'image/webp': '.webp',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/avif': '.avif',
+}
+
+export function syncFilenameExtension(name: string, mime: string): string {
+  const ext = MIME_EXTENSION[mime]
+  if (!ext) return name
+  const cleaned = name.replace(/\.(png|jpe?g|webp|avif|gif)$/i, '')
+  return `${cleaned || 'image'}${ext}`
+}
+
 export function shouldSkipFallbackFormat(
   originalMime: string,
   targetMime: string,
@@ -29,6 +43,31 @@ export function shouldSkipFallbackFormat(
   if (targetMime !== 'image/jpeg') return false
   if (originalMime !== 'image/webp' && originalMime !== 'image/avif') return false
   return Math.max(width, height) <= maxDimension
+}
+
+export interface ReencodeCheck {
+  originalMime: string
+  targetMime: string
+  originalSize: number
+  newSize: number
+  originalWidth: number
+  originalHeight: number
+  newWidth: number
+  newHeight: number
+}
+
+/**
+ * Decide whether a re-encoded candidate should replace the original blob.
+ * Prevents generation loss on repeated compression runs: if both format and
+ * dimensions are unchanged, require a meaningful size reduction (>= 15% and >= 16 KB).
+ */
+export function shouldAcceptReencode(check: ReencodeCheck): boolean {
+  if (check.newSize <= 0 || check.newSize >= check.originalSize) return false
+  const resized = check.newWidth < check.originalWidth || check.newHeight < check.originalHeight
+  const formatChanged = Boolean(check.originalMime) && check.originalMime !== check.targetMime
+  if (resized || formatChanged) return true
+  const saved = check.originalSize - check.newSize
+  return saved >= 16_384 && check.newSize <= check.originalSize * 0.85
 }
 
 export function rescaleTagBoxes<T extends { box: [number, number, number, number] | null }>(
