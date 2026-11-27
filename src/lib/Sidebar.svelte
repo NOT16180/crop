@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { formatStorageBytes } from './sync-protocol'
+  import type { SyncSnapshot } from './sync'
+
   type Props = {
     menuOpen: boolean
     theme: 'dark' | 'light'
     compressWebp: boolean
     showHelp: boolean
     accountSession: { user: { email: string; name: string } } | null
+    syncState: SyncSnapshot | null
     feedbackUrl: string
     onclose: () => void
     ontoggletheme: () => void
@@ -22,6 +26,7 @@
     compressWebp,
     showHelp,
     accountSession,
+    syncState,
     feedbackUrl,
     onclose,
     ontoggletheme,
@@ -56,7 +61,17 @@
     title="Re-encode new imports to high-quality WebP (max 2400px) to fit 4–5x more drawings in 100 MB"
   >WebP compression: {compressWebp ? 'On' : 'Off'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); onclose() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
-  <button type="button" onclick={onopenaccount}>{accountSession ? `Account · ${accountSession.user.email}` : 'Sign in'}</button>
+  <button type="button" class="side-menu-account" onclick={onopenaccount}>
+    {#if accountSession}
+      <span>Account & storage</span>
+      <small>
+        {accountSession.user.email}{#if syncState && syncState.phase !== 'unavailable'} · {formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)}{/if}
+      </small>
+    {:else}
+      <span>Sign in & cloud storage</span>
+      <small>100 MB free sync</small>
+    {/if}
+  </button>
   <button type="button" onclick={() => { onopentagmanager(); onclose() }}>Tag manager</button>
   <button type="button" onclick={() => { onbackup(); onclose() }} title="Download a ZIP copy of your library to this device">Backup</button>
   <button type="button" onclick={() => { onrestore(); onclose() }} title="Merge a Crop backup into this library">Restore</button>

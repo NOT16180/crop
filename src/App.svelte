@@ -1187,6 +1187,7 @@
   {compressWebp}
   {showHelp}
   {accountSession}
+  {syncState}
   feedbackUrl={FEEDBACK_URL}
   onclose={() => (menuOpen = false)}
   ontoggletheme={toggleTheme}

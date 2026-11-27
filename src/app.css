@@ -93,6 +93,8 @@ header {
 
 .side-menu.open { transform: translateX(0); }
 .side-menu > button, .side-menu > .support-link { text-align: left; overflow-wrap: anywhere; }
+.side-menu-account { display: flex; flex-direction: column; gap: 2px; }
+.side-menu-account small { color: var(--muted); font-size: 0.78rem; text-transform: none; }
 .side-menu .support-link { padding: 8px 10px; }
 .side-menu-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .side-menu-heading button { min-width: 36px; }
