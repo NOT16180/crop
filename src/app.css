@@ -1791,6 +1791,7 @@ button.danger:hover {
 
 :root {
     accent-color: var(--text);
+    --hover-bg: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
 h1,
@@ -1810,24 +1811,19 @@ label {
     outline-offset: 2px;
 }
 
-/* Signature black/white inversion hover across interactive chrome */
+/* Shared monochrome hover (soft paper gray matching the status strip) */
 button,
 .side-menu .support-link {
     -webkit-appearance: none;
     appearance: none;
     border-radius: 0;
-    transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 button:hover:not(:disabled):not(.card):not(.viewer-backdrop):not(.menu-backdrop):not(.account-scrim):not(.clear-search):not(.resize-handle):not(.danger):not(.danger-btn):not(.danger-link):not(.clear-crop-btn) {
-    background: var(--text);
-    color: var(--bg);
-    border-color: var(--text);
-}
-
-button:hover:not(:disabled) small,
-.autocomplete-list button:hover span {
-    color: var(--bg);
+    background: var(--hover-bg);
+    color: var(--text);
+    border-color: var(--border);
 }
 
 /* Header & chrome aligned to notgalerie.com navbar proportions */
@@ -1864,7 +1860,7 @@ header {
     width: 100%;
 }
 
-/* Primary CTA matches notgalerie.com solid-ink buttons (inverts on hover) */
+/* Primary CTA: crisp solid ink, softens to shared paper-gray on hover */
 .add-image-button {
     background: var(--text);
     color: var(--bg);
@@ -1872,9 +1868,9 @@ header {
 }
 
 .add-image-button:hover:not(:disabled) {
-    background: var(--bg) !important;
+    background: var(--hover-bg) !important;
     color: var(--text) !important;
-    border-color: var(--text) !important;
+    border-color: var(--border) !important;
 }
 
 /* Sidebar links styled consistently with notgalerie.com menu items */
@@ -1888,14 +1884,14 @@ header {
 
 .side-menu .support-link:hover,
 .side-menu .support-link:focus-visible {
-    background: var(--text);
-    color: var(--bg);
+    background: var(--hover-bg);
+    color: var(--text);
 }
 
-/* Pure paper surface on status strip (no muddy gray tint) */
+/* Subtle paper-gray status strip (signature tone shared with hovers across both sites) */
 .data-warning {
     padding: 10px clamp(16px, 3vw, 32px);
-    background: var(--surface);
+    background: var(--hover-bg);
 }
 
 .library-nav,
