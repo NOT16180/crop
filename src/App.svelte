@@ -4,6 +4,7 @@
   import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop } from './lib/images'
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
+  import { getAuthCallbackErrorMessage } from './lib/auth-config'
   import Toolbar from './lib/Toolbar.svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import AccountModal from './lib/AccountModal.svelte'
@@ -37,6 +38,7 @@
   let showHelp = $state(false)
   let menuOpen = $state(false)
   let showAccount = $state(false)
+  let accountMessage = $state('')
   let showTagManager = $state(false)
   let accountSession = $state<{ user: { email: string; name: string } } | null>(null)
   let showTagOverlays = $state(true)
@@ -207,6 +209,17 @@
 
   onMount(async () => {
     void refreshAccountSession()
+    const authParams = new URLSearchParams(window.location.search)
+    const authError = getAuthCallbackErrorMessage(authParams.get('error'))
+    if (authError) {
+      accountMessage = authError
+      showAccount = true
+      authParams.delete('error')
+      authParams.delete('error_description')
+      const cleanQuery = authParams.toString()
+      const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash}`
+      window.history.replaceState({}, '', cleanUrl)
+    }
     try {
       theme = window.localStorage.getItem('drawing-library-theme') === 'dark' ? 'dark' : 'light'
     } catch {
@@ -248,13 +261,25 @@
 
   async function openAccount() {
     menuOpen = false
+    accountMessage = ''
     showAccount = true
     await refreshAccountSession()
   }
 
-  async function signOut() {
-    await authClient.signOut()
-    accountSession = null
+  function closeAccount() {
+    showAccount = false
+    accountMessage = ''
+  }
+
+  async function signOut(): Promise<boolean> {
+    try {
+      const { error: signOutError } = await authClient.signOut()
+      if (signOutError) return false
+      accountSession = null
+      return true
+    } catch {
+      return false
+    }
   }
 
   function toggleTheme() {
@@ -671,7 +696,9 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
-      if (selection) selection = null
+      if (showAccount) closeAccount()
+      else if (showTagManager) showTagManager = false
+      else if (selection) selection = null
       else if (viewer) closeViewer()
       return
     }
@@ -1041,7 +1068,8 @@
 <AccountModal
   open={showAccount}
   session={accountSession}
-  onclose={() => (showAccount = false)}
+  initialMessage={accountMessage}
+  onclose={closeAccount}
   onsignout={signOut}
 />
 

@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { magicLink } from 'better-auth/plugins'
+import { AUTH_SCHEMA_CONFIG, resolveAuthBaseURL } from './auth-config'
 
 export interface AuthEnv {
   crop_auth: unknown
@@ -10,64 +11,20 @@ export interface AuthEnv {
 }
 
 export function createAuth(env: AuthEnv) {
-  const parsedBaseURL = new URL(env.AUTH_URL)
-  const baseURL = parsedBaseURL.origin
-  if (baseURL !== env.AUTH_URL.replace(/\/$/, '') ||
-      (parsedBaseURL.protocol !== 'https:' && parsedBaseURL.hostname !== 'localhost')) {
-    throw new Error('AUTH_URL must be an HTTPS origin (HTTP is allowed only for localhost)')
-  }
+  const baseURL = resolveAuthBaseURL(env.AUTH_URL)
 
   return betterAuth({
     database: env.crop_auth as never,
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
     trustedOrigins: [baseURL],
-    user: {
-      fields: {
-        emailVerified: 'email_verified',
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
-      },
-    },
-    session: {
-      fields: {
-        expiresAt: 'expires_at',
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
-        ipAddress: 'ip_address',
-        userAgent: 'user_agent',
-        userId: 'user_id',
-      },
-    },
-    account: {
-      fields: {
-        accountId: 'account_id',
-        providerId: 'provider_id',
-        userId: 'user_id',
-        accessToken: 'access_token',
-        refreshToken: 'refresh_token',
-        idToken: 'id_token',
-        accessTokenExpiresAt: 'access_token_expires_at',
-        refreshTokenExpiresAt: 'refresh_token_expires_at',
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
-      },
-    },
-    verification: {
-      fields: {
-        expiresAt: 'expires_at',
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
-      },
-    },
+    ...AUTH_SCHEMA_CONFIG,
     advanced: {
       ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
     },
     rateLimit: {
-      modelName: 'rate_limit',
-      fields: { lastRequest: 'last_request' },
+      ...AUTH_SCHEMA_CONFIG.rateLimit,
       enabled: true,
-      storage: 'database',
       window: 60,
       max: 100,
       customRules: {
@@ -86,6 +43,7 @@ export function createAuth(env: AuthEnv) {
 
           const response = await fetch('https://api.resend.com/emails', {
             method: 'POST',
+            signal: AbortSignal.timeout(8_000),
             headers: {
               Authorization: `Bearer ${env.RESEND_API_KEY}`,
               'Content-Type': 'application/json',
