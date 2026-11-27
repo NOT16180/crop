@@ -4,7 +4,8 @@ export { computeScaledDimensions, isAcceptedImage, rescaleTagBoxes } from './ima
 
 const THUMB_SIZE = 480
 export const WEBP_MAX_DIMENSION = 2400
-const WEBP_QUALITY = 0.86
+const WEBP_QUALITY = 0.84
+const JPEG_QUALITY = 0.82
 
 export interface ImportFailure {
   name: string
@@ -43,12 +44,17 @@ async function encodeCanvasBlob(
   height: number,
   type: string,
   quality: number,
+  fillBackground?: string,
 ): Promise<Blob> {
   const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
     ? new OffscreenCanvas(width, height)
     : Object.assign(document.createElement('canvas'), { width, height })
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Image canvas is unavailable')
+  if (fillBackground) {
+    context.fillStyle = fillBackground
+    context.fillRect(0, 0, width, height)
+  }
   context.drawImage(bitmap, 0, 0, width, height)
   return typeof OffscreenCanvas !== 'undefined' && canvas instanceof OffscreenCanvas
     ? await canvas.convertToBlob({ type, quality })
@@ -101,21 +107,37 @@ async function optimizeAsWebp(
   original: Blob,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const target = computeScaledDimensions(bitmap.width, bitmap.height, WEBP_MAX_DIMENSION)
-  try {
-    const candidate = await encodeCanvasBlob(bitmap, target.width, target.height, 'image/webp', WEBP_QUALITY)
-    if (candidate.size >= original.size) {
-      return { blob: original, width: bitmap.width, height: bitmap.height }
+  const formats: Array<{ type: string; quality: number; fillBackground?: string }> = [
+    { type: 'image/webp', quality: WEBP_QUALITY },
+    // Safari / iOS WebKit cannot encode WebP via canvas; fall back to high-quality JPEG.
+    { type: 'image/jpeg', quality: JPEG_QUALITY, fillBackground: '#ffffff' },
+  ]
+
+  for (const fmt of formats) {
+    try {
+      const candidate = await encodeCanvasBlob(
+        bitmap,
+        target.width,
+        target.height,
+        fmt.type,
+        fmt.quality,
+        fmt.fillBackground,
+      )
+      const bytes = new Uint8Array(await candidate.slice(0, 16).arrayBuffer())
+      if (sniffImageType(bytes) !== fmt.type) continue
+      if (candidate.size >= original.size) {
+        // Format is supported by this browser, original is already smaller.
+        return { blob: original, width: bitmap.width, height: bitmap.height }
+      }
+      const check = await createImageBitmap(candidate)
+      check.close()
+      return { blob: candidate, width: target.width, height: target.height }
+    } catch {
+      // Try next format.
     }
-    const bytes = new Uint8Array(await candidate.slice(0, 16).arrayBuffer())
-    if (sniffImageType(bytes) !== 'image/webp') {
-      return { blob: original, width: bitmap.width, height: bitmap.height }
-    }
-    const check = await createImageBitmap(candidate)
-    check.close()
-    return { blob: candidate, width: target.width, height: target.height }
-  } catch {
-    return { blob: original, width: bitmap.width, height: bitmap.height }
   }
+
+  return { blob: original, width: bitmap.width, height: bitmap.height }
 }
 
 /** Add files to the library and return the created records. */

@@ -452,11 +452,7 @@ async function runSyncCycle(user: SyncUser, options: SyncOptions): Promise<SyncS
   blobCandidates.sort((a, b) => a.totalSize - b.totalSize)
 
   const uploadedForPush: SyncOutboxRecord[] = []
-  for (const { item, drawing, totalSize } of blobCandidates) {
-    if (usedBytes + totalSize > quotaBytes) {
-      await db.syncOutbox.put({ ...item, blockedReason: 'quota' })
-      continue
-    }
+  for (const { item, drawing } of blobCandidates) {
 
     const thumbUpload = await uploadBlob(drawing.id, 'thumb', drawing.thumb)
     if (!thumbUpload.ok) {
@@ -559,8 +555,12 @@ async function runSyncCycle(user: SyncUser, options: SyncOptions): Promise<SyncS
 
       const existingLocal = await db.drawings.get(remoteDrawing.id)
       if (existingLocal) {
+        const dimensionsChanged =
+          existingLocal.width !== remoteDrawing.width || existingLocal.height !== remoteDrawing.height
+        const refreshedBlob = dimensionsChanged ? await downloadBlob(remoteDrawing.id, 'original') : null
         await db.drawings.put({
           ...existingLocal,
+          blob: refreshedBlob ?? existingLocal.blob,
           name: remoteDrawing.name,
           createdAt: remoteDrawing.createdAt,
           updatedAt: remoteDrawing.updatedAt,

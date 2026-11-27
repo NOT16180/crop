@@ -164,7 +164,7 @@
         compressProgress = `${done} / ${total}`
       })
       if (result.compressedCount > 0) {
-        message = `Compressed ${result.compressedCount} of ${result.total} drawings to WebP (saved ${formatStorageBytes(result.savedBytes)}).`
+        message = `Optimized ${result.compressedCount} of ${result.total} drawings (saved ${formatStorageBytes(result.savedBytes)}).`
       } else {
         message = 'All existing drawings are already compact.'
       }
