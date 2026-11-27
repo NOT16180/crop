@@ -211,7 +211,6 @@ input[type="search"]::-webkit-search-cancel-button {
     overflow-y: auto;
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .autocomplete-list button {
@@ -1006,7 +1005,6 @@ details[open] > summary::before {
     overflow-y: auto;
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .tag-filter-option {
@@ -1126,7 +1124,6 @@ details[open] > summary::before {
     overflow-y: auto;
     border: 1px solid var(--border);
     background: var(--surface);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .folder-menu-content button {
