@@ -6,10 +6,12 @@
 	"compatibility_flags": [
 		"nodejs_compat"
 	],
+	"vars": {
+		"AUTH_URL": "https://crop.darrenchauvet.workers.dev"
+	},
 	"secrets": {
 		"required": [
-			"BETTER_AUTH_SECRET",
-			"RESEND_API_KEY"
+			"BETTER_AUTH_SECRET"
 		]
 	},
 	"assets": {
