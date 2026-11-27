@@ -1319,7 +1319,14 @@
       <p>When viewing tagged crops in the gallery or viewer, click <strong>Copy</strong> to put a PNG crop on your clipboard or <strong>Download</strong> to save it directly. Click <strong>Export sheet</strong> to combine the current results into a single labeled PNG reference sheet (choose the count in the <strong>Sheet</strong> menu, or <em>All images</em>).</p>
 
       <h3>5. Account and cloud sync</h3>
-      <p>Open <strong>Menu → Sign in</strong> to connect with an email sign-in link (no password needed). Once signed in, your folders, drawings, and tags sync automatically across devices with up to <strong>100 MB</strong> of cloud storage (<strong>20 MB</strong> max per image). Your local library always keeps working without limits: if cloud storage is full, new images stay saved on this device until you free space by deleting drawings.</p>
+      <p>Open <strong>Menu → Sign in</strong> to connect with an email sign-in link (no password needed). Once signed in, your folders, drawings, and tags sync automatically across devices with up to <strong>100 MB</strong> of cloud storage (<strong>20 MB</strong> max per image).</p>
+      <p><strong>What happens if you reach the 100 MB cloud limit?</strong></p>
+      <ul>
+        <li><strong>Local work never stops:</strong> you can keep importing images, tagging, sorting, and downloading ZIP backups on this device with no data loss.</li>
+        <li><strong>What still syncs:</strong> deletions (sent first to free cloud space), edits to tags, folders, names, or order on already-synced drawings, and updates coming from your other devices.</li>
+        <li><strong>Drawings that do not fit:</strong> new drawings that exceed the remaining cloud space stay saved locally without blocking smaller drawings that still fit.</li>
+        <li><strong>Automatic resume:</strong> open <strong>Menu → Account</strong> to check your storage bar and see how many drawings are local-only. After you delete drawings (once the 8-second Undo window ends), cloud space is freed and waiting drawings upload automatically.</li>
+      </ul>
 
       <h3>6. Offline mode, backups, and theme</h3>
       <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the menu.</p>
