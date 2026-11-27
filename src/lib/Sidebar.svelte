@@ -38,12 +38,16 @@
     onrestore,
   }: Props = $props()
 
-  function closeSafely() {
+  function blurIfInsideMenu() {
     const active = document.activeElement
     if (active instanceof HTMLElement && active.closest('#side-menu')) {
       active.blur()
     }
-    closeSafely()
+  }
+
+  function closeSafely() {
+    blurIfInsideMenu()
+    onclose()
   }
 
   function onMenuKeydown(event: KeyboardEvent) {
@@ -69,7 +73,7 @@
     title="Re-encode new imports to high-quality WebP (max 2400px) to fit 4–5x more drawings in 100 MB"
   >WebP compression: {compressWebp ? 'On' : 'Off'}</button>
   <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); closeSafely() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
-  <button type="button" class="side-menu-account" onclick={onopenaccount}>
+  <button type="button" class="side-menu-account" onclick={() => { blurIfInsideMenu(); onopenaccount() }}>
     {#if accountSession}
       <span>Account & storage</span>
       <small>
