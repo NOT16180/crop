@@ -7,11 +7,13 @@
 		"nodejs_compat"
 	],
 	"vars": {
-		"AUTH_URL": "https://crop.darrenchauvet.workers.dev"
+		"AUTH_URL": "https://crop.darrenchauvet.workers.dev",
+		"AUTH_EMAIL_FROM": "Crop <login@mail.notgalerie.com>"
 	},
 	"secrets": {
 		"required": [
-			"BETTER_AUTH_SECRET"
+			"BETTER_AUTH_SECRET",
+			"RESEND_API_KEY"
 		]
 	},
 	"assets": {
