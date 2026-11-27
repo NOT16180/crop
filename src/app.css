@@ -1781,3 +1781,231 @@ button.danger:hover {
     text-transform: uppercase;
     pointer-events: none;
 }
+
+/* ==========================================================================
+   notgalerie.com Art Direction Alignment
+   Pure monochrome ink & paper, uniform 400 weight Inconsolata, crisp 1px
+   rules, black/white hover inversion, 4:5 gallery frames on #fff paper,
+   and animated underline chrome.
+   ========================================================================== */
+
+:root {
+    accent-color: var(--text);
+}
+
+h1,
+h2,
+h3,
+h4,
+strong,
+b,
+button,
+summary,
+label {
+    font-weight: 400;
+}
+
+:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+}
+
+/* Signature black/white inversion hover across interactive chrome */
+button,
+.side-menu .support-link {
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
+    transition: background-color 0.22s ease, color 0.22s ease, border-color 0.22s ease;
+}
+
+button:hover:not(:disabled):not(.card):not(.viewer-backdrop):not(.menu-backdrop):not(.account-scrim):not(.clear-search):not(.resize-handle):not(.danger):not(.danger-btn):not(.danger-link):not(.clear-crop-btn) {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+}
+
+button:hover:not(:disabled) small,
+.autocomplete-list button:hover span {
+    color: var(--bg);
+}
+
+/* Header & chrome aligned to notgalerie.com navbar proportions */
+header {
+    padding: 14px clamp(16px, 3vw, 32px);
+    background: var(--surface);
+}
+
+.brand-link {
+    position: relative;
+    padding: 4px 2px;
+    letter-spacing: 0.14em;
+}
+
+.brand-link h1 {
+    font-size: 1.15rem;
+    letter-spacing: 0.14em;
+}
+
+.brand-link::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 0;
+    height: 1px;
+    background: var(--text);
+    transform: translateX(-50%);
+    transition: width 0.25s ease;
+}
+
+.brand-link:hover::after,
+.brand-link:focus-visible::after {
+    width: 100%;
+}
+
+/* Primary CTA matches notgalerie.com solid-ink buttons (inverts on hover) */
+.add-image-button {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+}
+
+.add-image-button:hover:not(:disabled) {
+    background: var(--bg) !important;
+    color: var(--text) !important;
+    border-color: var(--text) !important;
+}
+
+/* Sidebar links styled consistently with notgalerie.com menu items */
+.side-menu .support-link {
+    display: block;
+    text-decoration: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid transparent;
+}
+
+.side-menu .support-link:hover,
+.side-menu .support-link:focus-visible {
+    background: var(--text);
+    color: var(--bg);
+}
+
+/* Pure paper surface on status strip (no muddy gray tint) */
+.data-warning {
+    padding: 10px clamp(16px, 3vw, 32px);
+    background: var(--surface);
+}
+
+.library-nav,
+.active-filters {
+    padding-inline: clamp(16px, 3vw, 32px);
+}
+
+main {
+    max-width: 1464px;
+    margin: 0 auto;
+    padding: clamp(16px, 2.5vw, 28px) clamp(16px, 3vw, 32px) 48px;
+}
+
+/* Gallery matching notgalerie.com/illustration/ (4:5 frames on crisp white paper) */
+.grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+    gap: clamp(16px, 2.2vw, 28px);
+}
+
+.card {
+    background: #ffffff;
+    border: 1px solid var(--image-border);
+    transition: transform 0.35s ease;
+}
+
+@media (hover: hover) and (min-width: 601px) {
+    .card:hover {
+        transform: scale(1.03);
+        z-index: 2;
+        background: #ffffff;
+    }
+}
+
+.drawing-name {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.78rem;
+}
+
+/* Editorial heading dividers matching notgalerie.com /contact/ & /about/ */
+.account-heading,
+.tag-manager-heading,
+.side-menu-heading {
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.help-page h2 {
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 0.1em;
+}
+
+.help-page h3 {
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: 0.08em;
+}
+
+/* Clean high-contrast badges */
+.badge {
+    background: #000000;
+    color: #ffffff;
+    border: 1px solid #ffffff;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* Minimal portfolio-style footer */
+.site-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 16px clamp(16px, 3vw, 32px);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.site-footer a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.site-footer a:hover,
+.site-footer a:focus-visible {
+    border-bottom-color: var(--text);
+}
+
+@media (max-width: 600px) {
+    .grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .card,
+    button,
+    .brand-link::after {
+        transition: none;
+    }
+
+    .card:hover {
+        transform: none;
+    }
+}

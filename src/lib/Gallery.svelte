@@ -269,7 +269,7 @@
       <li>
         <button
           class="card"
-          style:aspect-ratio={item.box ? item.box[2] / item.box[3] : item.drawing.width / item.drawing.height}
+          style:aspect-ratio={item.box ? item.box[2] / item.box[3] : '4 / 5'}
           draggable={!searching && selectedTagLabels.length === 0 && sortMode === 'manual'}
           ondragstart={(event) => startDrawingDrag(event, item.drawing.id)}
           ondragend={endDrawingDrag}

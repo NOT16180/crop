@@ -91,6 +91,7 @@
   <button type="button" onclick={() => { onopentagmanager(); closeSafely() }}>Tag manager</button>
   <button type="button" onclick={() => { onbackup(); closeSafely() }} title="Download a ZIP copy of your library to this device">Backup</button>
   <button type="button" onclick={() => { onrestore(); closeSafely() }} title="Merge a Crop backup into this library">Restore</button>
+  <a class="support-link" href="https://notgalerie.com/" target="_blank" rel="noopener noreferrer">Notgalerie</a>
   <a class="support-link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">Feedback</a>
   <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
 </aside>

@@ -47,7 +47,7 @@
   let query = $state('')
   let dragging = $state(false)
   let error = $state('')
-  let theme = $state<'dark' | 'light'>('dark')
+  let theme = $state<'dark' | 'light'>('light')
   let compressWebp = $state(false)
   let compressionFormat = $state<CompressionFormat>('webp')
   let showHelp = $state(false)
@@ -1567,6 +1567,14 @@
     {/if}
   {/if}
 </main>
+
+<footer class="site-footer">
+  <span>Crop</span>
+  <span aria-hidden="true">·</span>
+  <a href="https://notgalerie.com/" target="_blank" rel="noopener noreferrer">notgalerie.com</a>
+  <span aria-hidden="true">·</span>
+  <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+</footer>
 
   {#if dragging}
   <div class="drop-overlay">Drop images here to add them</div>
