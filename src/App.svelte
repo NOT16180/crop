@@ -64,6 +64,7 @@
   let viewerId = $state<string | null>(null)
   let viewerBox = $state.raw<Rect | null>(null)
   let viewerUrl = $state('')
+  let viewerRetried = false
   let selection = $state<Selection | null>(null)
   let resizing = $state<ResizeSession | null>(null)
   let tagInput = $state('')
@@ -886,8 +887,22 @@
     zoom = 1
     viewerId = item.drawing.id
     viewerBox = item.box
+    viewerRetried = false
     viewerUrl = URL.createObjectURL(item.drawing.blob)
     void tick().then(() => viewerDialog?.querySelector<HTMLElement>('.zoom-controls button:not([disabled])')?.focus())
+  }
+
+  async function retryViewerImage() {
+    if (!viewer || viewerRetried) return
+    viewerRetried = true
+    try {
+      const buffer = await viewer.blob.arrayBuffer()
+      const nextUrl = URL.createObjectURL(new Blob([buffer], { type: viewer.blob.type || 'image/jpeg' }))
+      if (viewerUrl) URL.revokeObjectURL(viewerUrl)
+      viewerUrl = nextUrl
+    } catch {
+      // Keep current state if the blob is genuinely unreadable.
+    }
   }
 
   function closeViewer() {
@@ -1621,6 +1636,7 @@
           src={viewerUrl}
           alt={viewer.name}
           draggable="false"
+          onerror={retryViewerImage}
           style:max-width={`calc((100vw - 24px) * ${zoom})`}
           style:max-height={`calc(max(220px, 100dvh - 240px) * ${zoom})`}
         />
