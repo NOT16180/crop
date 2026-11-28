@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
   import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings, detectCompressionFormat, type CompressionFormat } from './lib/images'
+  import { loadSampleDrawings, removeSampleDrawings, SAMPLE_QUICK_TAGS } from './lib/samples'
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
   import { getAuthCallbackErrorMessage } from './lib/auth-config'
@@ -50,6 +51,7 @@
   let theme = $state<'dark' | 'light'>('light')
   let compressWebp = $state(false)
   let compressionFormat = $state<CompressionFormat>('webp')
+  let loadingSamples = $state(false)
   let showHelp = $state(false)
   let menuOpen = $state(false)
   let showAccount = $state(false)
@@ -147,6 +149,7 @@
     return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
   })
   const allTagStats = $derived(computeTagStats(drawings))
+  const sampleCount = $derived(drawings.filter((d) => d.isSample).length)
   let localOnlyDrawingIds = $derived(new Set(syncState?.localOnlyIds ?? []))
   let viewerNavItems = $derived.by(() => {
     const seen = new Set<string>()
@@ -347,8 +350,45 @@
   }
 
   function commitPendingDeletes(toCommit: DrawingRecord[]) {
-    if (!toCommit.length) return
-    void queueDrawingDeletes(toCommit.map((d) => d.id)).then(() => triggerScheduledSync())
+    const syncable = toCommit.filter((d) => !d.isSample)
+    if (!syncable.length) return
+    void queueDrawingDeletes(syncable.map((d) => d.id)).then(() => triggerScheduledSync())
+  }
+
+  async function handleLoadSamples() {
+    if (loadingSamples) return
+    loadingSamples = true
+    error = ''
+    try {
+      const { added } = await loadSampleDrawings()
+      await reload()
+      await refreshStorageUsage()
+      notice = added > 0
+        ? `Loaded ${added} sample drawings. Try searching “face”, “hands”, or “hatching”.`
+        : 'Sample drawings are already loaded.'
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Could not load sample drawings.'
+    } finally {
+      loadingSamples = false
+    }
+  }
+
+  async function handleRemoveSamples() {
+    error = ''
+    try {
+      const { removed } = await removeSampleDrawings()
+      if (viewer?.isSample) closeViewer()
+      selectedFolderId = ''
+      selectedTagLabels = []
+      query = ''
+      await reload()
+      await refreshStorageUsage()
+      if (removed > 0) {
+        notice = `Removed ${removed} sample drawing${removed === 1 ? '' : 's'}.`
+      }
+    } catch {
+      error = 'Could not remove sample drawings.'
+    }
   }
 
   async function refreshAccountSession() {
@@ -1530,6 +1570,12 @@
     <section class="empty">
       <h2>Your library is empty</h2>
       <p>Drop images here (PNG, JPG, WebP, or AVIF), or click “Add images”.</p>
+      <div class="empty-actions">
+        <button type="button" class="add-image-button" onclick={() => fileInput.click()}>Add images</button>
+        <button type="button" onclick={handleLoadSamples} disabled={loadingSamples}>
+          {loadingSamples ? 'Loading samples…' : 'Load sample drawings'}
+        </button>
+      </div>
       {#if !installed && installEvent}
         <p class="empty-install"><button type="button" onclick={installApp}>Install Crop</button></p>
       {/if}
@@ -1540,6 +1586,22 @@
       {/if}
     </section>
   {:else}
+    {#if sampleCount > 0}
+      <div class="sample-bar" role="region" aria-label="Sample drawings">
+        <span class="sample-bar-label">Sample drawings by NOT · Try searching:</span>
+        <div class="sample-bar-tags">
+          {#each SAMPLE_QUICK_TAGS as tag (tag)}
+            <button
+              type="button"
+              class="sample-tag-btn"
+              class:active={normalizeText(query) === tag}
+              onclick={() => (query = normalizeText(query) === tag ? '' : tag)}
+            >{tag}</button>
+          {/each}
+        </div>
+        <button type="button" class="sample-remove-btn" onclick={handleRemoveSamples}>Remove samples</button>
+      </div>
+    {/if}
     {#if hasFilters}
       <p class="results-title">{items.length} {items.length === 1 ? 'image' : 'images'} match{activeSearchQuery ? ` “${activeSearchQuery.trim()}”` : ''}{selectedTagLabels.length > (activeSearchQuery && !searching ? 1 : 0) ? ` · ${selectedTagLabels.length} tags (${tagMatchMode === 'all' ? 'all' : 'any'})` : ''}.</p>
     {/if}

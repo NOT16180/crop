@@ -173,6 +173,7 @@ async function seedOutboxWithLocalLibrary(now: number): Promise<void> {
   const toPut: SyncOutboxRecord[] = []
 
   for (const folder of folders) {
+    if (folder.isSample) continue
     const key = outboxKey('folder', folder.id)
     if (!existingKeys.has(key)) {
       const updatedAt = folder.updatedAt ?? now
@@ -189,6 +190,7 @@ async function seedOutboxWithLocalLibrary(now: number): Promise<void> {
   }
 
   for (const drawing of drawings) {
+    if (drawing.isSample) continue
     const key = outboxKey('drawing', drawing.id)
     if (!existingKeys.has(key)) {
       const updatedAt = drawing.updatedAt ?? drawing.createdAt ?? now

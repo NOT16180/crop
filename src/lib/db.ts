@@ -23,12 +23,14 @@ export interface DrawingRecord {
   folderId?: string
   position?: number
   visibleTagIds?: string[]
+  isSample?: boolean
 }
 
 export interface FolderRecord {
   id: string
   name: string
   updatedAt?: number
+  isSample?: boolean
 }
 
 export interface SyncOutboxRecord {

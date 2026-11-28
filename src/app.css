@@ -2005,3 +2005,57 @@ main {
         transform: none;
     }
 }
+
+/* Empty state & sample drawings onboarding bar */
+.empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 18px 0 14px;
+}
+
+.sample-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    background: var(--hover-bg);
+    font-size: 0.84rem;
+}
+
+.sample-bar-label {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sample-bar-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sample-tag-btn,
+.sample-remove-btn {
+    padding: 4px 9px;
+    font-size: 0.78rem;
+    min-height: 0 !important;
+}
+
+.sample-tag-btn.active,
+.sample-tag-btn.active:hover:not(:disabled) {
+    background: var(--text);
+    color: var(--bg);
+    border-color: var(--text);
+}
+
+.sample-tag-btn.active:hover:not(:disabled) {
+    opacity: 0.85;
+}
+
+.sample-remove-btn {
+    margin-left: auto;
+}

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
+import {
+  SAMPLE_DRAWINGS,
+  SAMPLE_FOLDER_ID,
+} from '../src/lib/sample-data.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
 import {
   computeScaledDimensions,
@@ -282,4 +286,16 @@ test('extractStreamingZip enforces real decompressed size limits and rejects cor
     () => extractStreamingZip(encodeUtf8('not a zip file at all 1234567890')),
     /not a valid Crop backup/,
   )
+})
+
+test('all bundled sample drawings have valid dimensions, unique tag IDs, and in-bounds crop boxes', () => {
+  const sampleFolders = new Set([SAMPLE_FOLDER_ID])
+  assert.ok(SAMPLE_DRAWINGS.length >= 3)
+  for (const sample of SAMPLE_DRAWINGS) {
+    assert.equal(
+      isValidBackupDrawing({ ...sample, folderId: SAMPLE_FOLDER_ID }, sampleFolders),
+      true,
+      `Invalid sample drawing: ${sample.id}`,
+    )
+  }
 })
