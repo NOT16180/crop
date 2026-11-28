@@ -630,5 +630,118 @@ export async function handleBillingRequest(
     return jsonNoStore({ url: session.customer_portal_url })
   }
 
+  if ((path === '/api/billing/cancel' || path === '/api/billing/resume') && request.method === 'POST') {
+    if (!enabled || !deps.config.accessToken) {
+      return jsonNoStore({ error: 'Billing is not configured yet', code: 'BILLING_NOT_CONFIGURED' }, 503)
+    }
+
+    let subRow = await deps.db
+      .prepare(
+        `SELECT user_id, polar_customer_id, polar_subscription_id, product_id,
+                plan, status, current_period_end, cancel_at_period_end, updated_at
+         FROM user_subscription WHERE user_id = ?`,
+      )
+      .bind(deps.userId)
+      .first<UserSubscriptionRow>()
+
+    if (!subRow?.polar_subscription_id) {
+      try {
+        await refreshSubscriptionFromPolar({
+          db: deps.db,
+          userId: deps.userId,
+          config: deps.config,
+          fetchFn,
+          now,
+        })
+        subRow = await deps.db
+          .prepare(
+            `SELECT user_id, polar_customer_id, polar_subscription_id, product_id,
+                    plan, status, current_period_end, cancel_at_period_end, updated_at
+             FROM user_subscription WHERE user_id = ?`,
+          )
+          .bind(deps.userId)
+          .first<UserSubscriptionRow>()
+      } catch {
+        // Ignore refresh error; handled below.
+      }
+    }
+
+    if (!subRow?.polar_subscription_id || subRow.plan !== 'pro') {
+      return jsonNoStore({ error: 'No active subscription found', code: 'NO_SUBSCRIPTION' }, 404)
+    }
+
+    const cancelAtPeriodEnd = path === '/api/billing/cancel'
+    const polarRes = await fetchFn(
+      `${apiBase}/v1/subscriptions/${encodeURIComponent(subRow.polar_subscription_id)}`,
+      {
+        method: 'PATCH',
+        signal: AbortSignal.timeout(10_000),
+        headers: {
+          Authorization: `Bearer ${deps.config.accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ cancel_at_period_end: cancelAtPeriodEnd }),
+      },
+    )
+
+    if (!polarRes.ok) {
+      // If the Polar token does not yet include subscriptions:write, try returning
+      // a direct Customer Portal URL as a seamless fallback so the user is never stuck.
+      if (polarRes.status === 403) {
+        const portalPayload = subRow.polar_customer_id
+          ? { customer_id: subRow.polar_customer_id }
+          : { external_customer_id: deps.userId }
+        const fallbackRes = await fetchFn(`${apiBase}/v1/customer-sessions/`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(10_000),
+          headers: {
+            Authorization: `Bearer ${deps.config.accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(portalPayload),
+        }).catch(() => null)
+        const fallbackData = fallbackRes?.ok
+          ? ((await fallbackRes.json().catch(() => null)) as { customer_portal_url?: string } | null)
+          : null
+        if (isAllowedPolarRedirectUrl(fallbackData?.customer_portal_url)) {
+          return jsonNoStore({ fallbackPortalUrl: fallbackData.customer_portal_url })
+        }
+      }
+      return jsonNoStore({ error: 'Could not update subscription', code: 'SUBSCRIPTION_UPDATE_FAILED' }, 502)
+    }
+
+    const updatedSub = (await polarRes.json().catch(() => null)) as PolarSubscriptionObject | null
+    const nextPeriodEnd = parseTimestampMs(updatedSub?.current_period_end) ?? subRow.current_period_end
+    const nextCancelFlag = typeof updatedSub?.cancel_at_period_end === 'boolean'
+      ? (updatedSub.cancel_at_period_end ? 1 : 0)
+      : (cancelAtPeriodEnd ? 1 : 0)
+
+    await deps.db
+      .prepare(
+        `UPDATE user_subscription
+         SET cancel_at_period_end = ?, current_period_end = ?, updated_at = ?
+         WHERE user_id = ?`,
+      )
+      .bind(nextCancelFlag, nextPeriodEnd, now, deps.userId)
+      .run()
+
+    const statusBody: BillingStatusResponse = {
+      enabled,
+      plan: 'pro',
+      status: String(updatedSub?.status ?? subRow.status ?? 'active').toLowerCase(),
+      quotaBytes: PRO_QUOTA_BYTES,
+      currentPeriodEnd: nextPeriodEnd ? Number(nextPeriodEnd) : null,
+      cancelAtPeriodEnd: Boolean(nextCancelFlag),
+      hasCustomerPortal: true,
+      products: {
+        monthly: monthlyConfigured,
+        annual: annualConfigured,
+      },
+    }
+    return jsonNoStore({ status: statusBody })
+  }
+
   return jsonNoStore({ error: 'Not found' }, 404)
 }

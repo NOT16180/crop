@@ -250,3 +250,64 @@ test('billing checkout and portal routes call Polar API with external_customer_i
   assert.equal(portalJson.url, 'https://polar.sh/portal/session_456')
   assert.equal(calls[1].body.external_customer_id, 'user-1')
 })
+
+test('1-click cancel and resume routes PATCH Polar subscription and keep 5 GB until period end', async () => {
+  const { db } = setupBillingDb()
+  const now = () => 1700000010 * 1000
+
+  // Activate subscription first via webhook
+  const activeBody = JSON.stringify({
+    type: 'subscription.active',
+    data: {
+      id: 'sub_direct_1',
+      status: 'active',
+      product_id: 'prod-annual',
+      customer_id: 'cust_direct_1',
+      customer: { id: 'cust_direct_1', external_id: 'user-1', email: 'artist@example.com' },
+      current_period_end: '2027-11-28T00:00:00Z',
+    },
+  })
+  await handlePolarWebhook(
+    new Request('https://crop.notgalerie.com/api/billing/webhook', {
+      method: 'POST',
+      headers: signPolarWebhook(activeBody, TEST_CONFIG.webhookSecret, 'msg_c1', '1700000000'),
+      body: activeBody,
+    }),
+    { db, config: TEST_CONFIG, now },
+  )
+
+  const patchCalls = []
+  const fakeFetch = async (url, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) : null
+    patchCalls.push({ url: String(url), method: init?.method, body })
+    return Response.json({
+      id: 'sub_direct_1',
+      status: 'active',
+      cancel_at_period_end: body.cancel_at_period_end,
+      current_period_end: '2027-11-28T00:00:00Z',
+    })
+  }
+
+  // Cancel directly
+  const cancelRes = await handleBillingRequest(
+    new Request('https://crop.notgalerie.com/api/billing/cancel', { method: 'POST' }),
+    { db, userId: 'user-1', userEmail: 'artist@example.com', config: TEST_CONFIG, fetchFn: fakeFetch, now },
+  )
+  assert.equal(cancelRes.status, 200)
+  const cancelJson = await cancelRes.json()
+  assert.equal(cancelJson.status.plan, 'pro')
+  assert.equal(cancelJson.status.quotaBytes, PRO_QUOTA_BYTES)
+  assert.equal(cancelJson.status.cancelAtPeriodEnd, true)
+  assert.equal(patchCalls[0].method, 'PATCH')
+  assert.equal(patchCalls[0].body.cancel_at_period_end, true)
+
+  // Resume directly
+  const resumeRes = await handleBillingRequest(
+    new Request('https://crop.notgalerie.com/api/billing/resume', { method: 'POST' }),
+    { db, userId: 'user-1', userEmail: 'artist@example.com', config: TEST_CONFIG, fetchFn: fakeFetch, now },
+  )
+  assert.equal(resumeRes.status, 200)
+  const resumeJson = await resumeRes.json()
+  assert.equal(resumeJson.status.cancelAtPeriodEnd, false)
+  assert.equal(patchCalls[1].body.cancel_at_period_end, false)
+})

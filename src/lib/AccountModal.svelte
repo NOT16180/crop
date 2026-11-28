@@ -3,7 +3,13 @@
   import { authClient } from './auth-client'
   import { formatStorageBytes } from './sync-protocol'
   import type { SyncSnapshot } from './sync'
-  import { openBillingPortal, startBillingCheckout, type BillingInterval, type BillingStatus } from './billing-client'
+  import {
+    openBillingPortal,
+    startBillingCheckout,
+    updateSubscriptionCancellation,
+    type BillingInterval,
+    type BillingStatus,
+  } from './billing-client'
   import { t } from './i18n.svelte'
 
   type Props = {
@@ -19,6 +25,7 @@
     onsignout: () => Promise<boolean>
     ondeleteaccount: () => Promise<boolean>
     onsyncnow: (mode?: 'merge' | 'replace') => Promise<void>
+    onbillingchange: (status: BillingStatus) => void
     ontogglewebp: () => void
     oncompressexisting: (onProgress: (done: number, total: number) => void) => Promise<{ total: number; compressedCount: number; savedBytes: number; skippedCount: number; format: 'webp' | 'jpeg' }>
   }
@@ -36,6 +43,7 @@
     onsignout,
     ondeleteaccount,
     onsyncnow,
+    onbillingchange,
     ontogglewebp,
     oncompressexisting,
   }: Props = $props()
@@ -43,7 +51,8 @@
   let email = $state('')
   let message = $state('')
   let busy = $state(false)
-  let billingBusy = $state<BillingInterval | 'portal' | null>(null)
+  let billingBusy = $state<BillingInterval | 'portal' | 'cancel' | 'resume' | null>(null)
+  let confirmCancelSub = $state(false)
   let confirmDelete = $state(false)
   let compressProgress = $state('')
   let emailInput = $state<HTMLInputElement | null>(null)
@@ -88,6 +97,7 @@
       message = initialMessage
       busy = false
       confirmDelete = false
+      confirmCancelSub = false
       void tick().then(() => {
         if (session) signOutButton?.focus()
         else (emailInput ?? closeButton)?.focus()
@@ -96,6 +106,7 @@
       message = ''
       busy = false
       confirmDelete = false
+      confirmCancelSub = false
     }
   })
 
@@ -183,6 +194,28 @@
       window.location.assign(portalUrl)
     } catch {
       message = t('billing.portalError')
+      billingBusy = null
+    }
+  }
+
+  async function handleSubscriptionCancelToggle(action: 'cancel' | 'resume') {
+    if (busy || billingBusy) return
+    billingBusy = action
+    message = ''
+    try {
+      const result = await updateSubscriptionCancellation(action)
+      if (result.fallbackPortalUrl) {
+        window.location.assign(result.fallbackPortalUrl)
+        return
+      }
+      if (result.status) {
+        onbillingchange(result.status)
+        confirmCancelSub = false
+        message = action === 'cancel' ? t('billing.canceledMsg') : t('billing.resumedMsg')
+      }
+    } catch {
+      message = t('billing.cancelError')
+    } finally {
       billingBusy = null
     }
   }
@@ -309,14 +342,51 @@
                     : t('billing.renewsOn', { date: formattedDate })}
                 </small>
               {/if}
-              {#if billingStatus.hasCustomerPortal}
-                <button
-                  type="button"
-                  disabled={busy || billingBusy !== null}
-                  onclick={handleManageSubscription}
-                >
-                  {billingBusy === 'portal' ? t('billing.openingPortal') : t('billing.manageSub')}
-                </button>
+              {#if confirmCancelSub}
+                <p class="account-sync-warning">{t('billing.cancelConfirm')}</p>
+                <div class="account-actions">
+                  <button
+                    type="button"
+                    class="danger-btn"
+                    disabled={busy || billingBusy !== null}
+                    onclick={() => handleSubscriptionCancelToggle('cancel')}
+                  >
+                    {billingBusy === 'cancel' ? t('billing.canceling') : t('billing.confirmCancel')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || billingBusy !== null}
+                    onclick={() => (confirmCancelSub = false)}
+                  >{t('billing.keepPro')}</button>
+                </div>
+              {:else}
+                <div class="account-actions">
+                  {#if billingStatus.cancelAtPeriodEnd}
+                    <button
+                      type="button"
+                      class="add-image-button"
+                      disabled={busy || billingBusy !== null}
+                      onclick={() => handleSubscriptionCancelToggle('resume')}
+                    >
+                      {billingBusy === 'resume' ? t('billing.resuming') : t('billing.resumeSub')}
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      disabled={busy || billingBusy !== null}
+                      onclick={() => (confirmCancelSub = true)}
+                    >{t('billing.cancelSub')}</button>
+                  {/if}
+                  {#if billingStatus.hasCustomerPortal}
+                    <button
+                      type="button"
+                      disabled={busy || billingBusy !== null}
+                      onclick={handleManageSubscription}
+                    >
+                      {billingBusy === 'portal' ? t('billing.openingPortal') : t('billing.manageSub')}
+                    </button>
+                  {/if}
+                </div>
               {/if}
             {:else}
               <p class="account-billing-intro">{t('billing.upgradeTitle')}</p>

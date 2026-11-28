@@ -1416,6 +1416,7 @@
   onsignout={signOut}
   ondeleteaccount={handleDeleteAccount}
   onsyncnow={runAccountSync}
+  onbillingchange={(next) => (billingStatus = next)}
   ontogglewebp={toggleWebpCompression}
   oncompressexisting={handleCompressExistingLibrary}
 />

@@ -68,3 +68,31 @@ export async function openBillingPortal(): Promise<string> {
   }
   return data.url
 }
+
+export async function updateSubscriptionCancellation(
+  action: 'cancel' | 'resume',
+): Promise<{ status?: BillingStatus; fallbackPortalUrl?: string }> {
+  const response = await fetch(action === 'cancel' ? '/api/billing/cancel' : '/api/billing/resume', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+  })
+  const data = (await response.json().catch(() => null)) as {
+    status?: BillingStatus
+    fallbackPortalUrl?: string
+    error?: string
+  } | null
+  if (!response.ok) {
+    throw new Error(data?.error || 'Could not update subscription')
+  }
+  if (data?.fallbackPortalUrl) {
+    if (!isTrustedPolarUrl(data.fallbackPortalUrl)) {
+      throw new Error('Invalid portal URL')
+    }
+    return { fallbackPortalUrl: data.fallbackPortalUrl }
+  }
+  if (!data?.status) {
+    throw new Error('Could not update subscription')
+  }
+  return { status: data.status }
+}
