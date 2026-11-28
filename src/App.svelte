@@ -269,6 +269,7 @@
       compressWebp = false
     }
     document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#212121' : '#ffffff')
     const persisted = await requestPersistence()
     if (!persisted) persistenceWarning = true
     // A browser only grants persistent storage to an app it trusts; installing
@@ -481,6 +482,7 @@
   function toggleTheme() {
     theme = theme === 'dark' ? 'light' : 'dark'
     document.documentElement.dataset.theme = theme
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#212121' : '#ffffff')
     try {
       window.localStorage.setItem('drawing-library-theme', theme)
     } catch {

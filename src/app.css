@@ -37,15 +37,15 @@
     line-height: 1.4;
 }
 
-/* Inverted variant, still strictly two colours: black and white swapped. */
+/* Dark mode: soft #212121 charcoal gallery background with crisp white ink. */
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #000000;
-    --surface: #000000;
-    --surface-raised: #0d0d0d;
+    --bg: #212121;
+    --surface: #212121;
+    --surface-raised: #2b2b2b;
     --border: #ffffff;
     --text: #ffffff;
-    --muted: rgba(255, 255, 255, 0.68);
+    --muted: rgba(255, 255, 255, 0.72);
     --accent: #ffffff;
     --image-border: #ffffff;
 }
@@ -81,15 +81,7 @@ header {
 }
 
 header .theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
     white-space: nowrap;
-}
-
-.theme-icon {
-    flex-shrink: 0;
 }
 
 .side-menu {
@@ -1284,15 +1276,6 @@ details[open] > summary::before {
     header .header-actions {
         margin-left: auto;
         gap: 6px;
-    }
-
-    header .theme-toggle {
-        padding-left: 9px;
-        padding-right: 9px;
-    }
-
-    header .theme-toggle-label {
-        display: none;
     }
 
     header .add-image-button {
