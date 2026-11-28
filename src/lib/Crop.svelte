@@ -40,25 +40,43 @@
     const y = Math.max(0, Math.round(safe[1]))
     const w = Math.max(1, Math.round(safe[2]))
     const h = Math.max(1, Math.round(safe[3]))
-    const scale = size / Math.max(w, h)
+    // Render up to 2x device pixel ratio so cropped tiles stay crisp on Retina/HiDPI screens
+    // without needlessly upscaling beyond the crop's native resolution too aggressively.
+    const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1
+    const targetSize = Math.round(size * dpr)
+    const scale = targetSize / Math.max(w, h)
     const outW = Math.max(1, Math.round(w * scale))
     const outH = Math.max(1, Math.round(h * scale))
-    limited(() =>
-      createImageBitmap(blob, x, y, w, h, {
-        resizeWidth: outW,
-        resizeHeight: outH,
-        resizeQuality: 'high',
-      }),
-    )
-      .catch(() => createImageBitmap(blob))
-      .then((bitmap) => {
+    limited(async () => {
+      try {
+        const bitmap = await createImageBitmap(blob, x, y, w, h, {
+          resizeWidth: outW,
+          resizeHeight: outH,
+          resizeQuality: 'high',
+        })
+        return { bitmap, cropped: true }
+      } catch {
+        const bitmap = await createImageBitmap(blob)
+        return { bitmap, cropped: false }
+      }
+    })
+      .then(({ bitmap, cropped }) => {
         if (cancelled) {
           bitmap.close()
           return
         }
         canvas.width = outW
         canvas.height = outH
-        canvas.getContext('2d')?.drawImage(bitmap, 0, 0, outW, outH)
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true
+          ctx.imageSmoothingQuality = 'high'
+          if (cropped) {
+            ctx.drawImage(bitmap, 0, 0, outW, outH)
+          } else {
+            ctx.drawImage(bitmap, x, y, w, h, 0, 0, outW, outH)
+          }
+        }
         bitmap.close()
       })
       .catch((cause) => {
