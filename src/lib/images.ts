@@ -19,11 +19,11 @@ export {
 
 export type CompressionFormat = 'webp' | 'jpeg'
 
-const THUMB_SIZE = 480
+export const THUMB_SIZE = 960
 export const WEBP_MAX_DIMENSION = 2400
 const WEBP_QUALITY = 0.84
 const JPEG_QUALITY = 0.82
-const THUMB_QUALITY = 0.82
+const THUMB_QUALITY = 0.88
 
 interface DecodedImage {
   source: CanvasImageSource
@@ -119,6 +119,8 @@ async function encodeCanvasBlob(
           ctx.fillStyle = fillBackground
           ctx.fillRect(0, 0, width, height)
         }
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
         ctx.drawImage(source, 0, 0, width, height)
         const blob = await offscreen.convertToBlob(quality === undefined ? { type } : { type, quality })
         if (blob && blob.size > 0) return blob
@@ -141,6 +143,8 @@ async function encodeCanvasBlob(
       ctx.fillStyle = fillBackground
       ctx.fillRect(0, 0, width, height)
     }
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(source, 0, 0, width, height)
     const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob(
@@ -510,19 +514,23 @@ export async function compressExistingDrawings(
       const transparent = mime !== 'image/jpeg' && hasTransparency(decoded)
       const optimized = await optimizeImage(decoded, drawing.blob, transparent)
 
-      let thumbBroken = !drawing.thumb || drawing.thumb.size === 0
-      if (!thumbBroken) {
+      let thumbNeedsRebuild = !drawing.thumb || drawing.thumb.size === 0
+      if (!thumbNeedsRebuild) {
         try {
           const check = await decodeImage(drawing.thumb)
+          const expectedLongEdge = Math.min(THUMB_SIZE, Math.max(optimized.width, optimized.height))
+          if (Math.max(check.width, check.height) < expectedLongEdge - 40) {
+            thumbNeedsRebuild = true
+          }
           check.close()
         } catch {
-          thumbBroken = true
+          thumbNeedsRebuild = true
         }
       }
 
-      if (optimized.changed || thumbBroken) {
+      if (optimized.changed || thumbNeedsRebuild) {
         let nextThumb = drawing.thumb
-        if (optimized.changed || thumbBroken) {
+        if (optimized.changed || thumbNeedsRebuild) {
           try {
             const rebuilt = await makeThumbnail(decoded, transparent)
             nextThumb = rebuilt.thumb
@@ -565,4 +573,60 @@ export async function compressExistingDrawings(
   }
 
   return { total: ids.length, compressedIds, savedBytes, skippedCount, format }
+}
+
+/**
+ * Background one-by-one thumbnail upgrade for existing drawings whose stored
+ * thumbnails were generated at the legacy 480px cap. Keeps peak memory low on
+ * mobile Safari by processing one record at a time with short yields.
+ */
+export async function upgradeLowResThumbnails(): Promise<string[]> {
+  const ids = (await db.drawings.toCollection().primaryKeys()) as string[]
+  const upgradedIds: string[] = []
+
+  for (const id of ids) {
+    let decoded: DecodedImage | undefined
+    try {
+      const drawing = await db.drawings.get(id)
+      if (!drawing || drawing.isSample || !drawing.blob || drawing.blob.size === 0) continue
+
+      const origLongEdge = Math.max(drawing.width || 0, drawing.height || 0)
+      if (origLongEdge > 0 && origLongEdge <= 520) continue
+
+      let needsUpgrade = !drawing.thumb || drawing.thumb.size === 0
+      if (!needsUpgrade) {
+        try {
+          const thumbInfo = await decodeImage(drawing.thumb)
+          const targetLongEdge = origLongEdge > 0 ? Math.min(THUMB_SIZE, origLongEdge) : THUMB_SIZE
+          if (Math.max(thumbInfo.width, thumbInfo.height) < targetLongEdge - 40) {
+            needsUpgrade = true
+          }
+          thumbInfo.close()
+        } catch {
+          needsUpgrade = true
+        }
+      }
+      if (!needsUpgrade) continue
+
+      decoded = await decodeImage(drawing.blob)
+      const realLongEdge = Math.max(decoded.width, decoded.height)
+      if (realLongEdge <= 520) continue
+
+      const mime = (await sniffBlobMime(drawing.blob)) || drawing.blob.type
+      const transparent = mime !== 'image/jpeg' && hasTransparency(decoded)
+      const { thumb } = await makeThumbnail(decoded, transparent)
+      await db.drawings.update(drawing.id, {
+        thumb,
+        updatedAt: Date.now(),
+      })
+      upgradedIds.push(drawing.id)
+    } catch {
+      // Skip any single drawing that cannot be upgraded right now.
+    } finally {
+      decoded?.close()
+      await new Promise((resolve) => setTimeout(resolve, 16))
+    }
+  }
+
+  return upgradedIds
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import { db, removeLegacyAnalysisData, requestPersistence, type DrawingRecord, type FolderRecord, type Rect, type Tag } from './lib/db'
-  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings, detectCompressionFormat, type CompressionFormat } from './lib/images'
+  import { importFiles, deleteDrawings, isAcceptedImage, clampBox, rebuildThumbnail, copyCropToClipboard, downloadCrop, compressExistingDrawings, detectCompressionFormat, upgradeLowResThumbnails, type CompressionFormat } from './lib/images'
   import { loadSampleDrawings, removeSampleDrawings, SAMPLE_QUICK_TAGS } from './lib/samples'
   import { findTagged, normalizeText } from './lib/search'
   import { authClient } from './lib/auth-client'
@@ -321,7 +321,29 @@
     }
     await reload()
     await refreshStorageUsage()
+    void runBackgroundThumbnailUpgrade()
   })
+
+  let upgradingThumbs = false
+  async function runBackgroundThumbnailUpgrade() {
+    if (upgradingThumbs) return
+    upgradingThumbs = true
+    try {
+      const upgradedIds = await upgradeLowResThumbnails()
+      if (upgradedIds.length > 0) {
+        await reload()
+        await refreshStorageUsage()
+        if (accountSession) {
+          await queueDrawingUpserts(upgradedIds, { needsBlobUpload: true })
+          triggerScheduledSync()
+        }
+      }
+    } catch {
+      // Best-effort upgrade; retry on next load.
+    } finally {
+      upgradingThumbs = false
+    }
+  }
 
   function syncCallbacks() {
     return {
@@ -331,6 +353,7 @@
       onRemoteApplied: async () => {
         await reload()
         await refreshStorageUsage()
+        void runBackgroundThumbnailUpgrade()
       },
     }
   }
