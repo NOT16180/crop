@@ -3,12 +3,14 @@
   import { authClient } from './auth-client'
   import { formatStorageBytes } from './sync-protocol'
   import type { SyncSnapshot } from './sync'
+  import { openBillingPortal, startBillingCheckout, type BillingInterval, type BillingStatus } from './billing-client'
   import { t } from './i18n.svelte'
 
   type Props = {
     open: boolean
     session: { user: { id: string; email: string; name: string } } | null
     syncState: SyncSnapshot | null
+    billingStatus: BillingStatus | null
     compressWebp: boolean
     compressionFormat: 'webp' | 'jpeg'
     drawingCount: number
@@ -25,6 +27,7 @@
     open,
     session,
     syncState,
+    billingStatus,
     compressWebp,
     compressionFormat,
     drawingCount,
@@ -40,6 +43,7 @@
   let email = $state('')
   let message = $state('')
   let busy = $state(false)
+  let billingBusy = $state<BillingInterval | 'portal' | null>(null)
   let confirmDelete = $state(false)
   let compressProgress = $state('')
   let emailInput = $state<HTMLInputElement | null>(null)
@@ -157,6 +161,32 @@
     await onsyncnow(mode)
   }
 
+  async function handleUpgrade(plan: BillingInterval) {
+    if (busy || billingBusy) return
+    billingBusy = plan
+    message = ''
+    try {
+      const checkoutUrl = await startBillingCheckout(plan)
+      window.location.assign(checkoutUrl)
+    } catch {
+      message = t('billing.checkoutError')
+      billingBusy = null
+    }
+  }
+
+  async function handleManageSubscription() {
+    if (busy || billingBusy) return
+    billingBusy = 'portal'
+    message = ''
+    try {
+      const portalUrl = await openBillingPortal()
+      window.location.assign(portalUrl)
+    } catch {
+      message = t('billing.portalError')
+      billingBusy = null
+    }
+  }
+
   async function handleCompressExisting() {
     if (busy || syncState?.phase === 'syncing' || drawingCount === 0) return
     busy = true
@@ -257,6 +287,61 @@
                 <button type="button" onclick={() => handleSync('merge')}>{t('account.mergeLocal')}</button>
                 <button type="button" onclick={() => handleSync('replace')}>{t('account.replaceCloud')}</button>
               </div>
+            {/if}
+          </div>
+        {/if}
+
+        {#if billingStatus && billingStatus.enabled}
+          <div class="account-billing">
+            <div class="account-sync-row">
+              <span class="account-sync-label">{t('billing.sectionLabel')}</span>
+              <strong class="account-plan-badge" class:pro={billingStatus.plan === 'pro'}>
+                {billingStatus.plan === 'pro' ? t('billing.planPro') : t('billing.planFree')}
+              </strong>
+            </div>
+
+            {#if billingStatus.plan === 'pro'}
+              {#if billingStatus.currentPeriodEnd}
+                {@const formattedDate = new Date(billingStatus.currentPeriodEnd).toLocaleDateString()}
+                <small class="account-hint">
+                  {billingStatus.cancelAtPeriodEnd
+                    ? t('billing.endsOn', { date: formattedDate })
+                    : t('billing.renewsOn', { date: formattedDate })}
+                </small>
+              {/if}
+              {#if billingStatus.hasCustomerPortal}
+                <button
+                  type="button"
+                  disabled={busy || billingBusy !== null}
+                  onclick={handleManageSubscription}
+                >
+                  {billingBusy === 'portal' ? t('billing.openingPortal') : t('billing.manageSub')}
+                </button>
+              {/if}
+            {:else}
+              <p class="account-billing-intro">{t('billing.upgradeTitle')}</p>
+              <div class="account-billing-plans">
+                {#if billingStatus.products.annual}
+                  <button
+                    type="button"
+                    class="add-image-button"
+                    disabled={busy || billingBusy !== null}
+                    onclick={() => handleUpgrade('annual')}
+                  >
+                    {billingBusy === 'annual' ? t('billing.redirecting') : t('billing.proAnnual')}
+                  </button>
+                {/if}
+                {#if billingStatus.products.monthly}
+                  <button
+                    type="button"
+                    disabled={busy || billingBusy !== null}
+                    onclick={() => handleUpgrade('monthly')}
+                  >
+                    {billingBusy === 'monthly' ? t('billing.redirecting') : t('billing.proMonthly')}
+                  </button>
+                {/if}
+              </div>
+              <small class="account-hint">{t('billing.secureNote')}</small>
             {/if}
           </div>
         {/if}

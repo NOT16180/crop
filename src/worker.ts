@@ -6,10 +6,15 @@ import {
   type D1DatabaseLike,
   type R2BucketLike,
 } from './lib/sync-server'
+import { handleBillingRequest, handlePolarWebhook } from './lib/billing-server'
 
 interface Env extends AuthEnv {
   ASSETS: { fetch(request: Request): Promise<Response> }
   BLOBS?: R2BucketLike
+  POLAR_ACCESS_TOKEN?: string
+  POLAR_WEBHOOK_SECRET?: string
+  POLAR_PRODUCT_MONTHLY_ID?: string
+  POLAR_PRODUCT_ANNUAL_ID?: string
 }
 
 export default {
@@ -46,6 +51,61 @@ export default {
         }
         throw error
       }
+    }
+
+    if (url.pathname.startsWith('/api/billing')) {
+      if (!env.BETTER_AUTH_SECRET || !env.AUTH_URL) {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Authentication is not configured', code: 'AUTH_NOT_CONFIGURED' }, { status: 503 }),
+        )
+      }
+
+      let canonicalOrigin: string
+      try {
+        canonicalOrigin = resolveAuthBaseURL(env.AUTH_URL)
+      } catch {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Authentication is misconfigured', code: 'AUTH_MISCONFIGURED' }, { status: 503 }),
+        )
+      }
+
+      const billingConfig = {
+        accessToken: env.POLAR_ACCESS_TOKEN,
+        webhookSecret: env.POLAR_WEBHOOK_SECRET,
+        monthlyProductId: env.POLAR_PRODUCT_MONTHLY_ID,
+        annualProductId: env.POLAR_PRODUCT_ANNUAL_ID,
+        canonicalOrigin,
+      }
+
+      // Server-to-server Polar webhook authenticated via HMAC-SHA256 signature.
+      if (url.pathname === '/api/billing/webhook') {
+        const response = await handlePolarWebhook(request, {
+          db: env.crop_auth as D1DatabaseLike,
+          config: billingConfig,
+        })
+        return withAuthSecurityHeaders(response)
+      }
+
+      if (!isTrustedSameOriginRequest(request, canonicalOrigin)) {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Cross-origin request forbidden', code: 'FORBIDDEN_ORIGIN' }, { status: 403 }),
+        )
+      }
+
+      const session = await createAuth(env).api.getSession({ headers: request.headers })
+      if (!session?.user?.id) {
+        return withAuthSecurityHeaders(
+          Response.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 }),
+        )
+      }
+
+      const response = await handleBillingRequest(request, {
+        db: env.crop_auth as D1DatabaseLike,
+        userId: session.user.id,
+        userEmail: session.user.email,
+        config: billingConfig,
+      })
+      return withAuthSecurityHeaders(response)
     }
 
     if (url.pathname.startsWith('/api/sync')) {

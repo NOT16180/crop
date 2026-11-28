@@ -25,6 +25,7 @@
   import TagManagerModal from './lib/TagManagerModal.svelte'
   import Gallery, { type GalleryItem } from './lib/Gallery.svelte'
   import { computeTagStats, renameOrMergeTag, deleteTagGlobally, deduplicateTags } from './lib/tags'
+  import { fetchBillingStatus, type BillingStatus } from './lib/billing-client'
   import { getLocale, LOCALE_LABELS, setLocale, SUPPORTED_LOCALES, t, type Locale } from './lib/i18n.svelte'
 
   type Item = GalleryItem
@@ -60,6 +61,7 @@
   let showTagManager = $state(false)
   let accountSession = $state<{ user: { id: string; email: string; name: string } } | null>(null)
   let syncState = $state<SyncSnapshot | null>(null)
+  let billingStatus = $state<BillingStatus | null>(null)
   let showTagOverlays = $state(true)
   let visibleTagIds = $state<string[]>([])
   let zoom = $state(1)
@@ -252,14 +254,27 @@
     void detectCompressionFormat().then((fmt) => { compressionFormat = fmt })
     const authParams = new URLSearchParams(window.location.search)
     const authError = getAuthCallbackErrorMessage(authParams.get('error'))
-    if (authError) {
-      accountMessage = authError
-      showAccount = true
+    const checkoutReturn = authParams.get('checkout') === 'success'
+    if (authError || checkoutReturn) {
+      if (authError) {
+        accountMessage = authError
+        showAccount = true
+      }
       authParams.delete('error')
       authParams.delete('error_description')
+      authParams.delete('checkout')
       const cleanQuery = authParams.toString()
       const cleanUrl = `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash}`
       window.history.replaceState({}, '', cleanUrl)
+      if (checkoutReturn) {
+        void (async () => {
+          await refreshAccountSession(true)
+          showAccount = true
+          accountMessage = billingStatus?.plan === 'pro'
+            ? t('billing.checkoutSuccess')
+            : t('billing.checkoutPending')
+        })()
+      }
     }
     try {
       theme = window.localStorage.getItem('drawing-library-theme') === 'dark' ? 'dark' : 'light'
@@ -393,20 +408,23 @@
     }
   }
 
-  async function refreshAccountSession() {
+  async function refreshAccountSession(refreshBilling = false) {
     try {
       const { data } = await authClient.getSession()
       accountSession = data?.user
         ? { user: { id: data.user.id, email: data.user.email, name: data.user.name } }
         : null
       if (accountSession) {
+        billingStatus = await fetchBillingStatus(refreshBilling)
         syncState = await getSyncSnapshot(syncState?.phase ?? 'idle')
         void runAccountSync()
       } else {
+        billingStatus = null
         syncState = null
       }
     } catch {
       accountSession = null
+      billingStatus = null
       syncState = null
     }
   }
@@ -428,6 +446,7 @@
       const { error: signOutError } = await authClient.signOut()
       if (signOutError) return false
       accountSession = null
+      billingStatus = null
       syncState = null
       return true
     } catch {
@@ -440,6 +459,7 @@
       const ok = await deleteAccountAndCloudData()
       if (!ok) return false
       accountSession = null
+      billingStatus = null
       syncState = null
       return true
     } catch {
@@ -1364,6 +1384,7 @@
   open={showAccount}
   session={accountSession}
   {syncState}
+  {billingStatus}
   {compressWebp}
   {compressionFormat}
   drawingCount={drawings.length}

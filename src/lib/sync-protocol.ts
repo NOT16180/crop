@@ -1,4 +1,5 @@
 export const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024 // 100 MiB
+export const PRO_QUOTA_BYTES = 5 * 1024 * 1024 * 1024 // 5 GiB
 export const MAX_ORIGINAL_BLOB_BYTES = 20 * 1024 * 1024 // 20 MiB
 export const MAX_THUMB_BLOB_BYTES = 2 * 1024 * 1024 // 2 MiB
 export const MAX_PUSH_ITEMS = 100
@@ -102,6 +103,11 @@ export function formatStorageBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
   if (bytes < 1024) return `${Math.round(bytes)} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  const gb = 1024 * 1024 * 1024
+  if (bytes >= gb) {
+    const val = bytes / gb
+    return Number.isInteger(val) ? `${val} GB` : `${val.toFixed(1)} GB`
+  }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 

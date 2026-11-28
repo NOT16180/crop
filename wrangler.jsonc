@@ -14,7 +14,9 @@
 	],
 	"vars": {
 		"AUTH_URL": "https://crop.notgalerie.com",
-		"AUTH_EMAIL_FROM": "Crop <login@mail.notgalerie.com>"
+		"AUTH_EMAIL_FROM": "Crop <login@mail.notgalerie.com>",
+		"POLAR_PRODUCT_MONTHLY_ID": "6ed3e172-e99e-4da5-b886-68118324056a",
+		"POLAR_PRODUCT_ANNUAL_ID": "51904abc-767c-4fe7-b3a6-7d179ad08010"
 	},
 	"secrets": {
 		"required": [

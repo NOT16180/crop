@@ -2115,3 +2115,33 @@ main {
     text-decoration: underline;
     background: transparent !important;
 }
+
+/* Account billing / Pro upgrade box */
+.account-billing {
+    display: grid;
+    gap: 10px;
+    margin: 14px 0;
+    padding: 12px;
+    border: 1px solid var(--border);
+}
+
+.account-billing-intro {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.account-billing-plans {
+    display: grid;
+    gap: 8px;
+}
+
+.account-plan-badge {
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+}
+
+.account-plan-badge.pro {
+    padding: 2px 7px;
+    background: var(--text);
+    color: var(--bg);
+}
