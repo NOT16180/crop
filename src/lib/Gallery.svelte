@@ -3,6 +3,7 @@
   import { normalizeText } from './search'
   import Thumb from './Thumb.svelte'
   import Crop from './Crop.svelte'
+  import { t } from './i18n.svelte'
 
   export type GalleryItem = {
     key: string
@@ -185,55 +186,55 @@
 </script>
 
 {#if folderDrawings.length === 0 && !hasFilters}
-  <p class="results-title">This folder is empty. Add images to it.</p>
+  <p class="results-title">{t('gallery.emptyFolder')}</p>
 {:else if items.length > 0}
   <div class="library-actions">
     {#if !selectionMode}
-      <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>Select images</button>
+      <button type="button" onclick={() => { selectionMode = true; arrangingDrawings = false; selectedDrawingIds = []; bulkFolderId = selectedFolderId || '__unfiled__' }}>{t('gallery.selectImages')}</button>
     {/if}
     {#if !arrangingDrawings}
-      <button type="button" onclick={() => { arrangingDrawings = true; selectionMode = false }}>Arrange images</button>
+      <button type="button" onclick={() => { arrangingDrawings = true; selectionMode = false }}>{t('gallery.arrangeImages')}</button>
     {:else}
-      <button type="button" onclick={() => (arrangingDrawings = false)}>Done arranging</button>
+      <button type="button" onclick={() => (arrangingDrawings = false)}>{t('gallery.doneArranging')}</button>
     {/if}
-    <button type="button" onclick={onexportsheet} disabled={items.length === 0} title="Export the images shown as one PNG sheet you can share">Export sheet</button>
-    <label>Sheet
-      <select value={sheetSize} onchange={(e) => onsheetsizechange(e.currentTarget.value)} aria-label="Number of images on the sheet">
-        <option value="6">6 images</option>
-        <option value="12">12 images</option>
-        <option value="24">24 images</option>
-        <option value="48">48 images</option>
-        <option value="all">All images ({items.length})</option>
+    <button type="button" onclick={onexportsheet} disabled={items.length === 0} title={t('gallery.exportSheetTitle')}>{t('gallery.exportSheet')}</button>
+    <label>{t('gallery.sheet')}
+      <select value={sheetSize} onchange={(e) => onsheetsizechange(e.currentTarget.value)} aria-label={t('gallery.sheetAria')}>
+        <option value="6">{t('gallery.sheetImages', { count: 6 })}</option>
+        <option value="12">{t('gallery.sheetImages', { count: 12 })}</option>
+        <option value="24">{t('gallery.sheetImages', { count: 24 })}</option>
+        <option value="48">{t('gallery.sheetImages', { count: 48 })}</option>
+        <option value="all">{t('gallery.sheetAll', { count: items.length })}</option>
       </select>
     </label>
-    <label>Sort
-      <select value={sortMode} onchange={(e) => onsortchange(e.currentTarget.value as 'manual' | 'name' | 'newest' | 'oldest')} aria-label="Sort images">
-        <option value="manual">Manual order</option>
-        <option value="name">Name</option>
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
+    <label>{t('gallery.sort')}
+      <select value={sortMode} onchange={(e) => onsortchange(e.currentTarget.value as 'manual' | 'name' | 'newest' | 'oldest')} aria-label={t('gallery.sortAria')}>
+        <option value="manual">{t('gallery.sortManual')}</option>
+        <option value="name">{t('gallery.sortName')}</option>
+        <option value="newest">{t('gallery.sortNewest')}</option>
+        <option value="oldest">{t('gallery.sortOldest')}</option>
       </select>
     </label>
     {#if selectionMode}
-      <span>{selectedDrawingIds.length} selected</span>
-      <button type="button" onclick={selectAllVisible}>Select all visible</button>
-      <label>Move to
+      <span>{t('gallery.selectedCount', { count: selectedDrawingIds.length })}</span>
+      <button type="button" onclick={selectAllVisible}>{t('gallery.selectAll')}</button>
+      <label>{t('gallery.moveTo')}
         <select bind:value={bulkFolderId}>
-          <option value="__unfiled__">Unfiled</option>
+          <option value="__unfiled__">{t('gallery.unfiled')}</option>
           {#each folders as folder (folder.id)}<option value={folder.id}>{folder.name}</option>{/each}
         </select>
       </label>
-      <button type="button" onclick={handleMoveSelected} disabled={selectedDrawingIds.length === 0}>Move selected</button>
-      <button type="button" class="danger" onclick={handleDeleteSelected} disabled={selectedDrawingIds.length === 0}>Delete selected</button>
-      <button type="button" onclick={() => { selectionMode = false; selectedDrawingIds = [] }}>Cancel</button>
+      <button type="button" onclick={handleMoveSelected} disabled={selectedDrawingIds.length === 0}>{t('gallery.moveSelected')}</button>
+      <button type="button" class="danger" onclick={handleDeleteSelected} disabled={selectedDrawingIds.length === 0}>{t('gallery.deleteSelected')}</button>
+      <button type="button" onclick={() => { selectionMode = false; selectedDrawingIds = [] }}>{t('gallery.cancel')}</button>
       <form class="bulk-tag-form" onsubmit={(e) => { e.preventDefault(); handleBulkTag() }}>
         <div class="tag-input-wrap">
           <input
             type="text"
-            placeholder="Tag selected images…"
+            placeholder={t('gallery.bulkTagPlaceholder')}
             bind:value={bulkTagInput}
             autocomplete="off"
-            aria-label="Tag for selected images"
+            aria-label={t('gallery.bulkTagAria')}
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
@@ -244,7 +245,7 @@
             oninput={() => (activeBulkSuggestion = -1)}
           />
           {#if bulkSuggestions.length > 0}
-            <div class="autocomplete-list" id="bulk-tag-suggestions" role="listbox" aria-label="Tag suggestions">
+            <div class="autocomplete-list" id="bulk-tag-suggestions" role="listbox" aria-label={t('toolbar.tagSuggestions')}>
               {#each bulkSuggestions as entry, index (entry.label)}
                 <button
                   type="button"
@@ -260,7 +261,7 @@
             </div>
           {/if}
         </div>
-        <button type="submit" disabled={!bulkTagInput.trim() || selectedDrawingIds.length === 0}>Tag selected</button>
+        <button type="submit" disabled={!bulkTagInput.trim() || selectedDrawingIds.length === 0}>{t('gallery.tagSelected')}</button>
       </form>
     {/if}
   </div>
@@ -279,8 +280,8 @@
           }}
           ondrop={(event) => dropDrawing(event, item.drawing.id)}
           onclick={() => openCard(item)}
-          aria-label={`Open ${drawingDisplayName(item.drawing)}`}
-          title={activeSearchQuery ? item.drawing.name : `Drag to reorder: ${item.drawing.name}`}
+          aria-label={t('gallery.openImage', { name: drawingDisplayName(item.drawing) })}
+          title={activeSearchQuery ? item.drawing.name : t('gallery.dragToReorder', { name: item.drawing.name })}
         >
           {#if item.box}
             <Crop
@@ -295,7 +296,7 @@
             <Thumb blob={item.drawing.thumb} fallbackBlob={item.drawing.blob} alt={item.drawing.name} onfail={() => onrepairdrawing(item.drawing)} />
           {/if}
           {#if localOnlyIds?.has(item.drawing.id)}
-            <span class="local-only-badge" title="Saved locally only (cloud limit reached)">Local</span>
+            <span class="local-only-badge" title={t('gallery.localBadgeTitle')}>{t('gallery.localBadge')}</span>
           {/if}
         </button>
         <div class="drawing-meta">
@@ -305,15 +306,15 @@
               <button
                 type="button"
                 class="crop-btn"
-                title="Copy crop to clipboard"
+                title={t('gallery.copyCropTitle')}
                 onclick={(event) => { event.stopPropagation(); oncopycrop(item.drawing.blob, item.box, item.label ? `Crop "${item.label}"` : 'Crop') }}
-              >Copy</button>
+              >{t('gallery.copy')}</button>
               <button
                 type="button"
                 class="crop-btn"
-                title="Download crop as PNG"
+                title={t('gallery.downloadCropTitle')}
                 onclick={(event) => { event.stopPropagation(); ondownloadcrop(item.drawing.blob, item.box, `${item.drawing.name.replace(/\.[^.]+$/, '')}-${item.label ?? 'crop'}`) }}
-              >Download</button>
+              >{t('gallery.download')}</button>
             </div>
           {/if}
           {#if selectionMode}
@@ -323,13 +324,13 @@
                 checked={selectedDrawingIds.includes(item.drawing.id)}
                 onchange={(event) => toggleDrawingSelection(item.drawing.id, event.currentTarget.checked)}
               />
-              Select
+              {t('gallery.select')}
             </label>
           {/if}
           {#if arrangingDrawings && !hasFilters && sortMode === 'manual'}
-            <div class="reorder-buttons" aria-label="Reorder image {item.drawing.name}">
-              <button type="button" disabled={index === 0} onclick={() => onmovedrawing(item.drawing.id, -1)} aria-label="Move image {item.drawing.name} earlier">↑</button>
-              <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => onmovedrawing(item.drawing.id, 1)} aria-label="Move image {item.drawing.name} later">↓</button>
+            <div class="reorder-buttons" aria-label={item.drawing.name}>
+              <button type="button" disabled={index === 0} onclick={() => onmovedrawing(item.drawing.id, -1)} aria-label="↑">↑</button>
+              <button type="button" disabled={index === folderDrawings.length - 1} onclick={() => onmovedrawing(item.drawing.id, 1)} aria-label="↓">↓</button>
             </div>
           {/if}
         </div>
@@ -337,6 +338,6 @@
     {/each}
   </ul>
   {#if visibleCount < items.length}
-    <button type="button" class="load-more" onclick={onloadmore}>Load {Math.min(pageSize, items.length - visibleCount)} more ({items.length - visibleCount} remaining)</button>
+    <button type="button" class="load-more" onclick={onloadmore}>{t('gallery.loadMore', { count: Math.min(pageSize, items.length - visibleCount), remaining: items.length - visibleCount })}</button>
   {/if}
 {/if}

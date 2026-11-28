@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatStorageBytes } from './sync-protocol'
   import type { SyncSnapshot } from './sync'
+  import { getLocale, LOCALE_LABELS, setLocale, SUPPORTED_LOCALES, t, type Locale } from './i18n.svelte'
 
   type Props = {
     menuOpen: boolean
@@ -54,34 +55,44 @@
 </script>
 
 {#if menuOpen}
-  <button class="menu-backdrop" type="button" aria-label="Close menu" onclick={closeSafely} onkeydown={onMenuKeydown}></button>
+  <button class="menu-backdrop" type="button" aria-label={t('menu.close')} onclick={closeSafely} onkeydown={onMenuKeydown}></button>
 {/if}
-<aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label="Main menu" aria-hidden={!menuOpen} inert={!menuOpen}>
-  <div class="side-menu-heading"><strong>MENU</strong><button type="button" onclick={closeSafely} aria-label="Close menu">×</button></div>
+<aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label={t('menu.mainAria')} aria-hidden={!menuOpen} inert={!menuOpen}>
+  <div class="side-menu-heading"><strong>{t('menu.title')}</strong><button type="button" onclick={closeSafely} aria-label={t('menu.close')}>×</button></div>
+  <label class="side-menu-lang">
+    <span>{t('menu.language')}</span>
+    <select
+      aria-label={t('menu.language')}
+      value={getLocale()}
+      onchange={(event) => setLocale(event.currentTarget.value as Locale)}
+    >
+      {#each SUPPORTED_LOCALES as loc (loc)}
+        <option value={loc}>{LOCALE_LABELS[loc]}</option>
+      {/each}
+    </select>
+  </label>
   <button
     type="button"
     aria-pressed={compressWebp}
     onclick={ontogglewebp}
-    title={compressionFormat === 'webp'
-      ? 'Compress new imports to WebP (max 2400px) on this browser, or JPEG on iPhone/Safari'
-      : 'Compress new imports to JPEG (max 2400px) on Safari/iPhone; desktop and Android browsers encode WebP'}
-  >Compression: {compressWebp ? 'On' : 'Off'} ({compressionFormat.toUpperCase()})</button>
-  <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); closeSafely() }}>{showHelp ? 'Back to library' : 'How to use'}</button>
+    title={compressionFormat === 'webp' ? t('menu.compressionTitleWebp') : t('menu.compressionTitleJpeg')}
+  >{t('menu.compression', { state: compressWebp ? t('menu.on') : t('menu.off'), format: compressionFormat.toUpperCase() })}</button>
+  <button type="button" aria-pressed={showHelp} onclick={() => { ontogglehelp(); closeSafely() }}>{showHelp ? t('menu.backToLibrary') : t('menu.howToUse')}</button>
   <button type="button" class="side-menu-account" onclick={() => { blurIfInsideMenu(); onopenaccount() }}>
     {#if accountSession}
-      <span>Account & storage</span>
+      <span>{t('menu.accountStorage')}</span>
       <small>
         {accountSession.user.email}{#if syncState && syncState.phase !== 'unavailable'} · {formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)}{/if}
       </small>
     {:else}
-      <span>Sign in & cloud storage</span>
-      <small>100 MB free sync</small>
+      <span>{t('menu.signInSync')}</span>
+      <small>{t('menu.freeSync')}</small>
     {/if}
   </button>
-  <button type="button" onclick={() => { onopentagmanager(); closeSafely() }}>Tag manager</button>
-  <button type="button" onclick={() => { onbackup(); closeSafely() }} title="Download a ZIP copy of your library to this device">Backup</button>
-  <button type="button" onclick={() => { onrestore(); closeSafely() }} title="Merge a Crop backup into this library">Restore</button>
+  <button type="button" onclick={() => { onopentagmanager(); closeSafely() }}>{t('menu.tagManager')}</button>
+  <button type="button" onclick={() => { onbackup(); closeSafely() }} title={t('menu.backupTitle')}>{t('menu.backup')}</button>
+  <button type="button" onclick={() => { onrestore(); closeSafely() }} title={t('menu.restoreTitle')}>{t('menu.restore')}</button>
   <a class="support-link" href="https://notgalerie.com/" target="_blank" rel="noopener noreferrer">Notgalerie</a>
-  <a class="support-link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">Feedback</a>
-  <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+  <a class="support-link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">{t('menu.feedback')}</a>
+  <a class="support-link" href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">{t('menu.coffee')}</a>
 </aside>

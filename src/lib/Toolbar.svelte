@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
+
   type Props = {
     menuOpen: boolean
     theme: 'dark' | 'light'
@@ -46,7 +48,7 @@
 
 <header>
   <button type="button" class="menu-toggle" aria-expanded={menuOpen} aria-controls="side-menu" onclick={ontogglemenu}>
-    <span aria-hidden="true">☰</span> Menu
+    <span aria-hidden="true">☰</span> {t('toolbar.menu')}
   </button>
   <a class="brand-link" href="/" onclick={(event) => {
     event.preventDefault()
@@ -56,13 +58,13 @@
     <div class="search-control">
       <input
         type="search"
-        placeholder="Search images by tag (e.g. face, hands, landscape)…"
+        placeholder={t('toolbar.searchPlaceholder')}
         value={query}
         oninput={(e) => {
           onquerychange(e.currentTarget.value)
           activeSearchSuggestion = -1
         }}
-        aria-label="Search tags"
+        aria-label={t('toolbar.searchAria')}
         role="combobox"
         aria-autocomplete="list"
         aria-haspopup="listbox"
@@ -73,10 +75,10 @@
         autocomplete="off"
       />
       {#if query.trim().length > 0}
-        <button type="button" class="clear-search" onclick={() => onquerychange('')} aria-label="Clear search" title="Clear search">×</button>
+        <button type="button" class="clear-search" onclick={() => onquerychange('')} aria-label={t('toolbar.clearSearch')} title={t('toolbar.clearSearch')}>×</button>
       {/if}
       {#if searchSuggestions.length > 0}
-        <div class="autocomplete-list" id="search-suggestions" role="listbox" aria-label="Tag suggestions">
+        <div class="autocomplete-list" id="search-suggestions" role="listbox" aria-label={t('toolbar.tagSuggestions')}>
           {#each searchSuggestions as entry, index (entry.label)}
             <button
               type="button"
@@ -98,23 +100,23 @@
       type="button"
       class="theme-toggle"
       onclick={ontoggletheme}
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-label={theme === 'dark' ? t('theme.toLight') : t('theme.toDark')}
       aria-pressed={theme === 'dark'}
-      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={theme === 'dark' ? t('theme.toLight') : t('theme.toDark')}
     >
       {#if theme === 'dark'}
         <svg class="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
           <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
         </svg>
-        <span class="theme-toggle-label">Light</span>
+        <span class="theme-toggle-label">{t('theme.light')}</span>
       {:else}
         <svg class="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
-        <span class="theme-toggle-label">Dark</span>
+        <span class="theme-toggle-label">{t('theme.dark')}</span>
       {/if}
     </button>
-    <button type="button" class="add-image-button" onclick={onaddimages} title="You can also paste a screenshot with Ctrl+V or ⌘V">Add images</button>
+    <button type="button" class="add-image-button" onclick={onaddimages} title={t('toolbar.addImagesTitle')}>{t('toolbar.addImages')}</button>
   </div>
 </header>

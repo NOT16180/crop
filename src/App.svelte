@@ -25,6 +25,7 @@
   import TagManagerModal from './lib/TagManagerModal.svelte'
   import Gallery, { type GalleryItem } from './lib/Gallery.svelte'
   import { computeTagStats, renameOrMergeTag, deleteTagGlobally, deduplicateTags } from './lib/tags'
+  import { getLocale, LOCALE_LABELS, setLocale, SUPPORTED_LOCALES, t, type Locale } from './lib/i18n.svelte'
 
   type Item = GalleryItem
   type Selection = { x: number; y: number; w: number; h: number }
@@ -364,10 +365,10 @@
       await reload()
       await refreshStorageUsage()
       notice = added > 0
-        ? `Loaded ${added} sample drawings. Try searching “face”, “hands”, or “hatching”.`
-        : 'Sample drawings are already loaded.'
+        ? t('samples.loadedNotice', { count: added })
+        : t('samples.alreadyLoaded')
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : 'Could not load sample drawings.'
+      error = cause instanceof Error ? cause.message : t('samples.loadError')
     } finally {
       loadingSamples = false
     }
@@ -384,10 +385,10 @@
       await reload()
       await refreshStorageUsage()
       if (removed > 0) {
-        notice = `Removed ${removed} sample drawing${removed === 1 ? '' : 's'}.`
+        notice = t('samples.removedNotice', { count: removed })
       }
     } catch {
-      error = 'Could not remove sample drawings.'
+      error = t('samples.removeError')
     }
   }
 
@@ -1386,12 +1387,12 @@
   <summary>
     <span class="summary-main">
       {#if accountSession}
-        <strong>Cloud sync</strong>
+        <strong>{t('summary.cloudSync')}</strong>
         {#if syncState && syncState.phase !== 'unavailable'}
           · {formatStorageBytes(syncState.usedBytes)} / {formatStorageBytes(syncState.quotaBytes)}
         {/if}
       {:else}
-        <strong>Local mode</strong>{#if storageUsage} · {formatFileSize(storageUsage.usage)}{/if}
+        <strong>{t('summary.localMode')}</strong>{#if storageUsage} · {formatFileSize(storageUsage.usage)}{/if}
       {/if}
     </span>
     <span class="summary-actions">
@@ -1399,34 +1400,34 @@
         type="button"
         class="summary-btn"
         onclick={(event) => { event.preventDefault(); event.stopPropagation(); void openAccount() }}
-      >{accountSession ? 'Account & storage' : 'Sign in'}</button>
+      >{accountSession ? t('menu.accountStorage') : t('summary.signIn')}</button>
       {#if !installed && installEvent}
         <button
           type="button"
           class="summary-btn"
           onclick={(event) => { event.preventDefault(); event.stopPropagation(); installApp() }}
-        >Install app</button>
+        >{t('summary.installApp')}</button>
       {/if}
     </span>
   </summary>
   {#if accountSession}
-    <p>Your drawings, folders, and tags are saved locally for instant offline access and synced to your account (up to 100 MB cloud storage, 20 MB max per image).{#if storageUsage} Local browser storage: {formatFileSize(storageUsage.usage)}.{/if}</p>
-    <p>If your cloud quota is full, new drawings still stay saved on this device and you can download a full <strong>Backup</strong> ZIP anytime from <strong>Menu → Backup</strong>.</p>
+    <p>{t('summary.cloudDesc')}{#if storageUsage} {t('summary.localStorage', { size: formatFileSize(storageUsage.usage) })}{/if}</p>
+    <p>{t('summary.cloudQuotaNote')}</p>
   {:else}
-    <p>Without an account, Crop stores images and tags in this browser on this device only; nothing is uploaded. Open <strong>Menu → Sign in</strong> to sync across devices with an email link, or download a <strong>Backup</strong> ZIP regularly.</p>
+    <p>{t('summary.localDesc')}</p>
   {/if}
   {#if !installed}
-    <p>Installing Crop keeps it working with no network and protects local storage from automatic cleanup.</p>
+    <p>{t('summary.installNote')}</p>
   {/if}
   {#if persistenceWarning}
-    <p>⚠ Your browser did not grant persistent storage, so local data may be cleared if the device runs low on disk space. Keep using Crop and install it from your browser (menu → <em>Install</em> or <em>Add to Home screen</em>) for persistent offline storage.</p>
+    <p>{t('summary.persistenceWarning')}</p>
   {/if}
 </details>
 
-<nav class="library-nav" aria-label="Library navigation">
+<nav class="library-nav" aria-label={t('nav.aria')}>
   <details class="folder-menu">
     <summary>
-      Folder: {folders.find((folder) => folder.id === selectedFolderId)?.name ?? 'All images'}
+      {t('nav.folder')}: {folders.find((folder) => folder.id === selectedFolderId)?.name ?? t('nav.allImages')}
       ({selectedFolderId
         ? drawings.filter((drawing) => drawing.folderId === selectedFolderId).length
         : drawings.length})
@@ -1439,7 +1440,7 @@
         ondragover={(event) => onFolderDragOver(event, '')}
         ondragleave={() => { if (dragOverFolderId === '') dragOverFolderId = null }}
         ondrop={(event) => onFolderDrop(event, '')}
-      >All images ({drawings.length})</button>
+      >{t('nav.allImages')} ({drawings.length})</button>
       {#each folders as folder (folder.id)}
         <div class="folder-entry">
           <button
@@ -1453,24 +1454,24 @@
           >
             {folder.name} ({drawings.filter((drawing) => drawing.folderId === folder.id).length})
           </button>
-          <button type="button" class="folder-action" onclick={() => renameFolder(folder)} aria-label="Rename {folder.name}">Rename</button>
-          <button type="button" class="folder-action" onclick={() => deleteFolder(folder)} aria-label="Delete {folder.name}">Delete</button>
+          <button type="button" class="folder-action" onclick={() => renameFolder(folder)} aria-label="{t('nav.rename')} {folder.name}">{t('nav.rename')}</button>
+          <button type="button" class="folder-action" onclick={() => deleteFolder(folder)} aria-label="{t('nav.delete')} {folder.name}">{t('nav.delete')}</button>
         </div>
       {/each}
-      <button type="button" onclick={createFolder}>＋ New folder</button>
+      <button type="button" onclick={createFolder}>{t('nav.newFolder')}</button>
     </div>
   </details>
 
   {#if tagList.length > 0}
     <details class="tag-filter-menu">
-      <summary>Tags{searching ? ` · ${query.trim()}` : ''} ({tagList.length})</summary>
+      <summary>{t('nav.tags')}{searching ? ` · ${query.trim()}` : ''} ({tagList.length})</summary>
       <div class="tag-filter-content">
         <fieldset class="tag-filter-mode">
-          <legend>Match</legend>
-          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'all'} onchange={() => (tagMatchMode = 'all')} /> All selected</label>
-          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'any'} onchange={() => (tagMatchMode = 'any')} /> Any selected</label>
+          <legend>{t('nav.match')}</legend>
+          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'all'} onchange={() => (tagMatchMode = 'all')} /> {t('nav.matchAll')}</label>
+          <label><input type="radio" name="tag-match" checked={tagMatchMode === 'any'} onchange={() => (tagMatchMode = 'any')} /> {t('nav.matchAny')}</label>
         </fieldset>
-        {#if selectedTagLabels.length}<button type="button" class="clear-tag-filters" onclick={() => (selectedTagLabels = [])}>Clear selected tags</button>{/if}
+        {#if selectedTagLabels.length}<button type="button" class="clear-tag-filters" onclick={() => (selectedTagLabels = [])}>{t('nav.clearTags')}</button>{/if}
         {#each tagList as entry (entry.label)}
           <label class="tag-filter-option">
             <input type="checkbox" checked={selectedTagLabels.includes(normalizeText(entry.label))} onchange={(event) => toggleTagFilter(entry.label, event.currentTarget.checked)} />
@@ -1481,23 +1482,23 @@
     </details>
   {/if}
 
-  <button type="button" class="tag-manager-nav-btn" onclick={() => (showTagManager = true)}>Manage tags</button>
+  <button type="button" class="tag-manager-nav-btn" onclick={() => (showTagManager = true)}>{t('nav.manageTags')}</button>
 </nav>
 
 {#if selectedFolderId || query.trim() || selectedTagLabels.length}
-  <div class="active-filters" aria-label="Active filters">
+  <div class="active-filters" aria-label={t('filters.aria')}>
     {#if selectedFolderId}
       <button type="button" class="filter-chip" onclick={() => (selectedFolderId = '')}>
-        Folder: {folders.find((f) => f.id === selectedFolderId)?.name ?? 'Folder'} ×
+        {t('filters.folder', { name: folders.find((f) => f.id === selectedFolderId)?.name ?? t('nav.folder') })} ×
       </button>
     {/if}
     {#if query.trim()}
       <button type="button" class="filter-chip" onclick={() => (query = '')}>
-        Search: “{query.trim()}” ×
+        {t('filters.search', { query: query.trim() })} ×
       </button>
     {/if}
     {#each selectedTagLabels as tagKey (tagKey)}
-      {@const display = tagList.find((t) => normalizeText(t.label) === tagKey)?.label ?? tagKey}
+      {@const display = tagList.find((item) => normalizeText(item.label) === tagKey)?.label ?? tagKey}
       <button type="button" class="filter-chip" onclick={() => toggleTagFilter(display, false)}>
         #{display} ×
       </button>
@@ -1506,7 +1507,7 @@
       type="button"
       class="filter-chip clear-all-chip"
       onclick={() => { selectedFolderId = ''; query = ''; selectedTagLabels = [] }}
-    >Clear all</button>
+    >{t('filters.clearAll')}</button>
   </div>
 {/if}
 
@@ -1515,14 +1516,14 @@
     {#if error}
       <p class="status error toast" role="alert" aria-live="assertive">
         <span>{error}</span>
-        <button type="button" onclick={() => (error = '')} aria-label="Dismiss error">×</button>
+        <button type="button" onclick={() => (error = '')} aria-label={t('toast.dismissError')}>×</button>
       </p>
     {/if}
     {#if notice}
       <p class="status notice toast">
         <span>{notice}</span>
-        {#if pendingDeletedDrawings.length}<button type="button" onclick={undoDelete}>Undo ({pendingDeletedDrawings.length})</button>{/if}
-        <button type="button" onclick={() => (notice = '')} aria-label="Dismiss notification">×</button>
+        {#if pendingDeletedDrawings.length}<button type="button" onclick={undoDelete}>{t('toast.undo', { count: pendingDeletedDrawings.length })}</button>{/if}
+        <button type="button" onclick={() => (notice = '')} aria-label={t('toast.dismissNotice')}>×</button>
       </p>
     {/if}
   </div>
@@ -1531,64 +1532,57 @@
 <main>
   {#if showHelp}
     <article class="help-page">
-      <h2>How to use Crop</h2>
-      <p>Crop is a personal drawing and reference library. Tag whole images or specific cropped areas, search details instantly, work offline in your browser, and sync across devices when signed in.</p>
+      <h2>{t('help.title')}</h2>
+      <p>{t('help.intro')}</p>
 
-      <h3>1. Add images</h3>
-      <p>Click <strong>Add images</strong>, drag files onto the page, or paste a screenshot with <strong>Ctrl+V / ⌘V</strong>. Crop supports <strong>PNG, JPG, WebP, and AVIF</strong>; files the browser cannot decode are reported individually. Optional image compression (in <strong>Menu</strong> or <strong>Account</strong>) resizes oversized images to 2400 px and encodes <strong>WebP</strong> on desktop/Android or high-quality <strong>JPEG</strong> on iPhone/Safari (where WebKit cannot encode WebP).</p>
+      <h3>{t('help.s1Title')}</h3>
+      <p>{t('help.s1Body')}</p>
 
-      <h3>2. Tag whole images or specific areas</h3>
-      <p>Open any image to add tags. Type a tag directly for the whole image, or drag a rectangle first to tag a specific area (you can resize crop boxes anytime). Use <strong>Manage tags</strong> (or <strong>Menu → Tag manager</strong>) to rename, merge without duplicates, or delete tags across your entire library.</p>
+      <h3>{t('help.s2Title')}</h3>
+      <p>{t('help.s2Body')}</p>
 
-      <h3>3. Search, filter, and organize</h3>
-      <p>Search by tag with autocomplete or combine multiple tags in <strong>all</strong> or <strong>any</strong> mode. Create folders from the <strong>Folder</strong> menu (deleting a folder keeps its drawings under <em>All images</em>), reorder drawings by dragging or with <strong>Arrange drawings</strong>, and use <strong>Select</strong> to move, bulk-tag, or delete several images at once (deletions can be undone for 8 seconds).</p>
+      <h3>{t('help.s3Title')}</h3>
+      <p>{t('help.s3Body')}</p>
 
-      <h3>4. Copy crops and export reference sheets</h3>
-      <p>When viewing tagged crops in the gallery or viewer, click <strong>Copy</strong> to put a PNG crop on your clipboard or <strong>Download</strong> to save it directly. Click <strong>Export sheet</strong> to combine the current results into a single labeled PNG reference sheet (choose the count in the <strong>Sheet</strong> menu, or <em>All images</em>).</p>
+      <h3>{t('help.s4Title')}</h3>
+      <p>{t('help.s4Body')}</p>
 
-      <h3>5. Account and cloud sync</h3>
-      <p>Open <strong>Menu → Sign in</strong> to connect with an email sign-in link (no password needed). Once signed in, your folders, drawings, and tags sync automatically across devices with up to <strong>100 MB</strong> of cloud storage (<strong>20 MB</strong> max per image).</p>
-      <p><strong>What happens if you reach the 100 MB cloud limit?</strong></p>
-      <ul>
-        <li><strong>Local work never stops:</strong> you can keep importing images, tagging, sorting, and downloading ZIP backups on this device with no data loss.</li>
-        <li><strong>What still syncs:</strong> deletions (sent first to free cloud space), edits to tags, folders, names, or order on already-synced drawings, and updates coming from your other devices.</li>
-        <li><strong>Drawings that do not fit:</strong> new drawings that exceed the remaining cloud space stay saved locally without blocking smaller drawings that still fit.</li>
-        <li><strong>Automatic resume:</strong> open <strong>Menu → Account</strong> to check your storage bar and see how many drawings are local-only. After you delete drawings (once the 8-second Undo window ends), cloud space is freed and waiting drawings upload automatically.</li>
-      </ul>
+      <h3>{t('help.s5Title')}</h3>
+      <p>{t('help.s5Body')}</p>
 
-      <h3>6. Offline mode, backups, and theme</h3>
-      <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the top bar.</p>
+      <h3>{t('help.s6Title')}</h3>
+      <p>{t('help.s6Body')}</p>
 
-      <h3>7. Privacy and open-source license</h3>
-      <p>Crop has no ads, no tracking, and never uses your artwork for AI training. When signed in, your account and synced files are stored on Cloudflare solely to sync your devices; you can permanently delete your account and cloud data anytime from <strong>Menu → Account</strong>. Crop is open source under the <strong>GNU AGPL-3.0</strong> license.</p>
+      <h3>{t('help.s7Title')}</h3>
+      <p>{t('help.s7Body')}</p>
 
-      <h3>Feedback and support</h3>
-      <p>Share ideas or bugs via the <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">GitHub feedback form</a> (public issues — avoid private artwork or personal info). If you enjoy Crop, you can also <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">support it on Ko-fi</a>.</p>
+      <h3>{t('help.feedbackTitle')}</h3>
+      <p>{t('help.feedbackBody')} <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer">{t('help.feedbackLink')}</a> · <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">{t('help.kofiLink')}</a></p>
     </article>
   {:else}
   {#if drawings.length === 0}
     <section class="empty">
-      <h2>Your library is empty</h2>
-      <p>Drop images here (PNG, JPG, WebP, or AVIF), or click “Add images”.</p>
+      <h2>{t('empty.title')}</h2>
+      <p>{t('empty.subtitle')}</p>
       <div class="empty-actions">
-        <button type="button" class="add-image-button" onclick={() => fileInput.click()}>Add images</button>
+        <button type="button" class="add-image-button" onclick={() => fileInput.click()}>{t('toolbar.addImages')}</button>
         <button type="button" onclick={handleLoadSamples} disabled={loadingSamples}>
-          {loadingSamples ? 'Loading samples…' : 'Load sample drawings'}
+          {loadingSamples ? t('empty.loadingSamples') : t('empty.loadSamples')}
         </button>
       </div>
       {#if !installed && installEvent}
-        <p class="empty-install"><button type="button" onclick={installApp}>Install Crop</button></p>
+        <p class="empty-install"><button type="button" onclick={installApp}>{t('empty.installCrop')}</button></p>
       {/if}
       {#if accountSession}
-        <p>Signed in as <strong>{accountSession.user.email}</strong>. Images you add here will sync across your devices (up to 100 MB cloud storage).</p>
+        <p>{t('empty.signedInDesc', { email: accountSession.user.email })}</p>
       {:else}
-        <p>Your library stays in this browser on this device until you sign in. Keep the original files and use Backup regularly, or sign in to sync across devices.</p>
+        <p>{t('empty.localDesc')}</p>
       {/if}
     </section>
   {:else}
     {#if sampleCount > 0}
-      <div class="sample-bar" role="region" aria-label="Sample drawings">
-        <span class="sample-bar-label">Sample drawings by NOT · Try searching:</span>
+      <div class="sample-bar" role="region" aria-label={t('samples.regionAria')}>
+        <span class="sample-bar-label">{t('samples.barLabel')}</span>
         <div class="sample-bar-tags">
           {#each SAMPLE_QUICK_TAGS as tag (tag)}
             <button
@@ -1599,14 +1593,14 @@
             >{tag}</button>
           {/each}
         </div>
-        <button type="button" class="sample-remove-btn" onclick={handleRemoveSamples}>Remove samples</button>
+        <button type="button" class="sample-remove-btn" onclick={handleRemoveSamples}>{t('samples.remove')}</button>
       </div>
     {/if}
     {#if hasFilters}
-      <p class="results-title">{items.length} {items.length === 1 ? 'image' : 'images'} match{activeSearchQuery ? ` “${activeSearchQuery.trim()}”` : ''}{selectedTagLabels.length > (activeSearchQuery && !searching ? 1 : 0) ? ` · ${selectedTagLabels.length} tags (${tagMatchMode === 'all' ? 'all' : 'any'})` : ''}.</p>
+      <p class="results-title">{activeSearchQuery ? t('results.matchQuery', { count: items.length, query: activeSearchQuery.trim() }) : t('results.match', { count: items.length })}{selectedTagLabels.length > (activeSearchQuery && !searching ? 1 : 0) ? (tagMatchMode === 'all' ? t('results.tagsSuffixAll', { count: selectedTagLabels.length }) : t('results.tagsSuffixAny', { count: selectedTagLabels.length })) : ''}.</p>
     {/if}
     {#if hasFilters && items.length === 0}
-      <p class="results-title">No images match these filters.</p>
+      <p class="results-title">{t('results.none')}</p>
     {/if}
     <Gallery
       {folderDrawings}
@@ -1650,38 +1644,49 @@
   <span aria-hidden="true">·</span>
   <a href="https://notgalerie.com/" target="_blank" rel="noopener noreferrer">notgalerie.com</a>
   <span aria-hidden="true">·</span>
-  <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">Coffee</a>
+  <a href="https://ko-fi.com/not1618033" target="_blank" rel="noopener noreferrer">{t('menu.coffee')}</a>
+  <span aria-hidden="true">·</span>
+  <select
+    class="footer-lang"
+    aria-label={t('menu.language')}
+    value={getLocale()}
+    onchange={(event) => setLocale(event.currentTarget.value as Locale)}
+  >
+    {#each SUPPORTED_LOCALES as loc (loc)}
+      <option value={loc}>{LOCALE_LABELS[loc]}</option>
+    {/each}
+  </select>
 </footer>
 
   {#if dragging}
-  <div class="drop-overlay">Drop images here to add them</div>
+  <div class="drop-overlay">{t('drop.overlay')}</div>
 {/if}
 
 {#if viewer}
   <div class="viewer" bind:this={viewerDialog} role="dialog" aria-modal="true" aria-label={viewer.name} tabindex="-1">
-    <button class="viewer-backdrop" onclick={closeViewer} aria-label="Close viewer"></button>
-    <figure aria-label="Image and tag controls">
+    <button class="viewer-backdrop" onclick={closeViewer} aria-label={t('viewer.closeAria')}></button>
+    <figure aria-label={t('viewer.controlsAria')}>
       <div class="viewer-toolbar">
-        <div class="zoom-controls" aria-label="Image zoom and navigation controls">
-          <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label="Zoom out" title="Zoom out (-)">−</button>
+        <div class="zoom-controls" aria-label={t('viewer.zoomAria')}>
+          <button type="button" onclick={() => changeZoom(-0.25)} disabled={zoom <= 0.5} aria-label={t('viewer.zoomOut')} title="{t('viewer.zoomOut')} (-)">−</button>
           <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-          <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label="Zoom in" title="Zoom in (+)">+</button>
-          <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title="Reset zoom (0)">Reset</button>
+          <button type="button" onclick={() => changeZoom(0.25)} disabled={zoom >= 4} aria-label={t('viewer.zoomIn')} title="{t('viewer.zoomIn')} (+)">+</button>
+          <button type="button" onclick={() => (zoom = 1)} disabled={zoom === 1} title={t('viewer.resetTitle')}>{t('viewer.reset')}</button>
           {#if viewerNavItems.length > 1 && viewerNavIndex >= 0}
-            <div class="viewer-nav" aria-label="Browse drawings">
-              <button type="button" onclick={() => navigateViewer(-1)} disabled={viewerNavIndex <= 0} aria-label="Previous image" title="Previous (←)">‹</button>
+            <div class="viewer-nav" aria-label={t('viewer.browseAria')}>
+              <button type="button" onclick={() => navigateViewer(-1)} disabled={viewerNavIndex <= 0} aria-label={t('viewer.prev')} title="{t('viewer.prev')} (←)">‹</button>
               <span class="viewer-nav-count">{viewerNavIndex + 1}/{viewerNavItems.length}</span>
-              <button type="button" onclick={() => navigateViewer(1)} disabled={viewerNavIndex >= viewerNavItems.length - 1} aria-label="Next image" title="Next (→)">›</button>
+              <button type="button" onclick={() => navigateViewer(1)} disabled={viewerNavIndex >= viewerNavItems.length - 1} aria-label={t('viewer.next')} title="{t('viewer.next')} (→)">›</button>
             </div>
           {/if}
-          <button type="button" class="viewer-close-btn" onclick={closeViewer} aria-label="Close viewer" title="Close viewer (Esc)">×</button>
+          <button type="button" class="viewer-close-btn" onclick={closeViewer} aria-label={t('viewer.closeAria')} title="{t('viewer.closeAria')} (Esc)">×</button>
         </div>
         {#if viewerBox}
-          <div class="viewer-active-crop" aria-label="Focused crop actions">
-            <span class="active-crop-label">Focused crop</span>
-            <button type="button" onclick={() => viewer && viewerBox && handleCopyCrop(viewer.blob, viewerBox, 'Focused crop')} title="Copy focused crop to clipboard">Copy</button>
-            <button type="button" onclick={() => viewer && viewerBox && handleDownloadCrop(viewer.blob, viewerBox, `${viewer.name.replace(/\.[^.]+$/, '')}-crop`)} title="Download focused crop as PNG">Download</button>
-            <button type="button" class="clear-crop-btn" onclick={() => (viewerBox = null)} title="Clear crop focus">×</button>
+          <div class="viewer-active-crop" aria-label={t('viewer.focusedCrop')}>
+            <span class="active-crop-label">{t('viewer.focusedCrop')}</span>
+            <button type="button" onclick={() => viewer && viewerBox && handleCopyCrop(viewer.blob, viewerBox, 'Focused crop')} title={t('gallery.copyCropTitle')}>{t('gallery.copy')}</button>
+            <button type="button" onclick={() => viewer && viewerBox && handleDownloadCrop(viewer.blob, viewerBox, `${viewer.name.replace(/\.[^.]+$/, '')}-crop`)} title={t('gallery.downloadCropTitle')}>{t('gallery.download')}</button>
+            <button type="button" class="clear-crop-btn" onclick={() => (viewerBox = null)} title={t('viewer.clearFocus')}>×</button>
           </div>
         {/if}
       </div>
@@ -1719,32 +1724,32 @@
                   <button
                     type="button"
                     class="tag-copy-btn"
-                    aria-label="Copy {tag.label} crop to clipboard"
-                    title="Copy crop to clipboard"
+                    aria-label="{t('gallery.copy')} {tag.label}"
+                    title={t('gallery.copyCropTitle')}
                     onpointerdown={(event) => event.stopPropagation()}
                     onclick={(event) => { event.stopPropagation(); if (viewer && tag.box) handleCopyCrop(viewer.blob, tag.box, `Crop "${tag.label}"`) }}
                   >📋</button>
                   <button
                     type="button"
-                    aria-label="Remove {tag.label} tag"
-                    title="Remove tag from image"
+                    aria-label="{t('nav.delete')} {tag.label}"
+                    title={t('viewer.removeTagTitle')}
                     onpointerdown={(event) => event.stopPropagation()}
                     onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
                   >×</button>
                 </em>
-                <button type="button" class="resize-handle nw" aria-label="Resize {tag.label}, top-left corner" onpointerdown={(event) => startResize(event, tag, 'nw')}></button>
-                <button type="button" class="resize-handle ne" aria-label="Resize {tag.label}, top-right corner" onpointerdown={(event) => startResize(event, tag, 'ne')}></button>
-                <button type="button" class="resize-handle sw" aria-label="Resize {tag.label}, bottom-left corner" onpointerdown={(event) => startResize(event, tag, 'sw')}></button>
-                <button type="button" class="resize-handle se" aria-label="Resize {tag.label}, bottom-right corner" onpointerdown={(event) => startResize(event, tag, 'se')}></button>
+                <button type="button" class="resize-handle nw" aria-label="{tag.label} NW" onpointerdown={(event) => startResize(event, tag, 'nw')}></button>
+                <button type="button" class="resize-handle ne" aria-label="{tag.label} NE" onpointerdown={(event) => startResize(event, tag, 'ne')}></button>
+                <button type="button" class="resize-handle sw" aria-label="{tag.label} SW" onpointerdown={(event) => startResize(event, tag, 'sw')}></button>
+                <button type="button" class="resize-handle se" aria-label="{tag.label} SE" onpointerdown={(event) => startResize(event, tag, 'se')}></button>
               </span>
             {/if}
           {/each}
-          <div class="whole-tags" aria-label="Whole image tags">
+          <div class="whole-tags" aria-label={t('viewer.wholeTagsAria')}>
             {#each viewer.tags.filter((tag) => !tag.box && visibleTagIds.includes(tag.id)) as tag (tag.id)}
               <span><span class="tag-label">{tag.label}</span><button
                 type="button"
-                aria-label="Remove {tag.label} tag"
-                title="Remove tag from image"
+                aria-label="{t('nav.delete')} {tag.label}"
+                title={t('viewer.removeTagTitle')}
                 onpointerdown={(event) => event.stopPropagation()}
                 onclick={(event) => { event.stopPropagation(); removeTag(viewer, tag.id) }}
               >×</button></span>
@@ -1780,9 +1785,9 @@
         <div class="tag-input-wrap">
           <input
             type="text"
-            placeholder={selection ? 'Tag the selected area' : 'Tag the whole image (or drag to select an area)'}
+            placeholder={selection ? t('viewer.tagAreaPlaceholder') : t('viewer.tagWholePlaceholder')}
             bind:value={tagInput}
-            aria-label="New tag"
+            aria-label={t('viewer.newTagAria')}
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
@@ -1794,7 +1799,7 @@
             autocomplete="off"
           />
           {#if tagSuggestions.length > 0}
-            <div class="autocomplete-list" id="tag-suggestions" role="listbox" aria-label="Existing tags">
+            <div class="autocomplete-list" id="tag-suggestions" role="listbox" aria-label={t('viewer.existingTagsAria')}>
               {#each tagSuggestions as entry, index (entry.label)}
                 <button type="button" id="tag-suggestion-{index}" role="option" aria-selected={activeTagSuggestion === index} class:active={activeTagSuggestion === index} onclick={() => { tagInput = entry.label; activeTagSuggestion = -1 }}>
                   {entry.label}<span>{entry.count}</span>
@@ -1803,7 +1808,7 @@
             </div>
           {/if}
         </div>
-        <button type="submit" disabled={!tagInput.trim()}>Add tag</button>
+        <button type="submit" disabled={!tagInput.trim()}>{t('viewer.addTag')}</button>
         {#if selection && viewer}
           {@const selBox: Rect = [
             Math.round(selection.x * viewer.width),
@@ -1811,29 +1816,28 @@
             Math.max(1, Math.round(selection.w * viewer.width)),
             Math.max(1, Math.round(selection.h * viewer.height)),
           ]}
-          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, selBox, 'Selected area')} title="Copy selected area to clipboard">Copy crop</button>
-          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, selBox, viewer.name)} title="Download selected area as PNG">Download crop</button>
-          <button type="button" onclick={() => (selection = null)}>Cancel selection</button>
+          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, selBox, 'Selected area')} title={t('gallery.copyCropTitle')}>{t('viewer.copyCrop')}</button>
+          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, selBox, viewer.name)} title={t('gallery.downloadCropTitle')}>{t('viewer.downloadCrop')}</button>
+          <button type="button" onclick={() => (selection = null)}>{t('viewer.cancelSelection')}</button>
         {/if}
         {#if error}<p class="status error" role="alert" aria-live="assertive">{error}</p>{/if}
       </form>
 
       {#if quickTags.length > 0}
-        <div class="quick-tags" aria-label="Quick add existing tags">
+        <div class="quick-tags" aria-label={t('viewer.quickTagsAria')}>
           {#each quickTags as entry (entry.label)}
             <button
               type="button"
               class="quick-tag-chip"
               onclick={() => addTag(entry.label)}
-              title={selection ? `Tag selected area with "${entry.label}"` : `Add "${entry.label}"`}
             >+ {entry.label}</button>
           {/each}
         </div>
       {/if}
 
-      <label class="drawing-folder">Folder
+      <label class="drawing-folder">{t('nav.folder')}
         <select value={viewer.folderId ?? ''} onchange={(event) => moveToFolder(viewer!, event.currentTarget.value)}>
-          <option value="">Unfiled</option>
+          <option value="">{t('gallery.unfiled')}</option>
           {#each folders as folder (folder.id)}
             <option value={folder.id}>{folder.name}</option>
           {/each}
@@ -1842,7 +1846,7 @@
 
       {#if viewer.tags.length > 0}
         <details class="tag-menu">
-          <summary>Tags ({visibleTagIds.filter((id) => viewer.tags.some((tag) => tag.id === id)).length}/{viewer.tags.length} visible)</summary>
+          <summary>{t('viewer.tagsVisible', { visible: visibleTagIds.filter((id) => viewer.tags.some((tag) => tag.id === id)).length, total: viewer.tags.length })}</summary>
           <div class="tag-menu-content">
             {#each viewerTagGroups as group (normalizeText(group.label))}
               <section class="tag-group">
@@ -1855,9 +1859,9 @@
                   <strong>{group.label}</strong><span>({group.tags.length})</span>
                 </label>
                 <div class="tag-group-actions">
-                  <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>Rename everywhere</button>
-                  <button type="button" class="merge-tag" onclick={() => mergeTagGroup(group.label)}>Merge into…</button>
-                  <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>Delete everywhere</button>
+                  <button type="button" class="rename-tag" onclick={() => renameTagGroup(group.label)}>{t('viewer.renameEverywhere')}</button>
+                  <button type="button" class="merge-tag" onclick={() => mergeTagGroup(group.label)}>{t('viewer.mergeInto')}</button>
+                  <button type="button" class="delete-tag" onclick={() => deleteTagGroup(group.label)}>{t('viewer.deleteEverywhere')}</button>
                 </div>
                 {#each group.tags as tag (tag.id)}
                   <div class="tag-entry">
@@ -1867,18 +1871,17 @@
                         checked={visibleTagIds.includes(tag.id)}
                         onchange={(event) => toggleTagVisibility(tag.id, event.currentTarget.checked)}
                       />
-                      {tag.box ? 'Area' : 'Whole image'}
+                      {tag.box ? t('viewer.area') : t('viewer.wholeImage')}
                     </label>
                     <span class="tag-entry-actions">
                       {#if tag.box}
-                        <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, tag.box, `Crop "${tag.label}"`)} title="Copy crop to clipboard">Copy</button>
-                        <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)} title="Download crop as PNG">Download</button>
+                        <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, tag.box, `Crop "${tag.label}"`)} title={t('gallery.copyCropTitle')}>{t('gallery.copy')}</button>
+                        <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, tag.box, `${viewer.name.replace(/\.[^.]+$/, '')}-${tag.label}`)} title={t('gallery.downloadCropTitle')}>{t('gallery.download')}</button>
                       {/if}
                       <button
                         type="button"
                         onclick={() => viewer && removeTag(viewer, tag.id)}
-                        aria-label={tag.box ? `Delete ${tag.label} crop from this image` : `Delete ${tag.label} tag from this image`}
-                      >{tag.box ? 'Delete crop' : 'Delete from image'}</button>
+                      >{tag.box ? t('viewer.deleteCrop') : t('viewer.deleteFromImage')}</button>
                     </span>
                   </div>
                 {/each}
@@ -1891,17 +1894,17 @@
       <figcaption>
         <span class="viewer-meta">{viewer.name} · {viewer.width}×{viewer.height} · {formatFileSize(viewer.blob.size)}</span>
         <span class="viewer-actions">
-          <button type="button" onclick={() => viewer && renameDrawing(viewer)}>Rename</button>
-          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, null, 'Original image')} title="Copy original image to clipboard">Copy image</button>
-          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, null, viewer.name)} title="Download original image">Download</button>
+          <button type="button" onclick={() => viewer && renameDrawing(viewer)}>{t('nav.rename')}</button>
+          <button type="button" onclick={() => viewer && handleCopyCrop(viewer.blob, null, 'Original image')} title={t('viewer.copyImageTitle')}>{t('viewer.copyImage')}</button>
+          <button type="button" onclick={() => viewer && handleDownloadCrop(viewer.blob, null, viewer.name)} title={t('viewer.downloadImageTitle')}>{t('gallery.download')}</button>
           <button
             type="button"
             onclick={() => (showTagOverlays = !showTagOverlays)}
             aria-pressed={showTagOverlays}
-            title={showTagOverlays ? 'Hide tag overlays without deleting tags' : 'Show tag overlays'}
-          >{showTagOverlays ? 'Hide tags' : 'Show tags'}</button>
-          <button onclick={() => viewer && remove(viewer)}>Delete image</button>
-          <button onclick={closeViewer}>Close</button>
+            title={showTagOverlays ? t('viewer.hideTagsTitle') : t('viewer.showTagsTitle')}
+          >{showTagOverlays ? t('viewer.hideTags') : t('viewer.showTags')}</button>
+          <button onclick={() => viewer && remove(viewer)}>{t('viewer.deleteImage')}</button>
+          <button onclick={closeViewer}>{t('viewer.close')}</button>
         </span>
       </figcaption>
     </figure>

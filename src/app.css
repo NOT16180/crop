@@ -32,7 +32,7 @@
     --muted: rgba(0, 0, 0, 0.62);
     --accent: #000000;
     --image-border: #000000;
-    font-family: "Inconsolata", monospace;
+    font-family: "Inconsolata", "Hiragino Kaku Gothic ProN", "Yu Gothic", "PingFang SC", "Noto Sans CJK JP", "Noto Sans CJK SC", monospace;
     font-optical-sizing: auto;
     line-height: 1.4;
 }
@@ -2090,4 +2090,45 @@ main {
 
 .sample-remove-btn {
     margin-left: auto;
+}
+
+/* Language selectors (sidebar + minimal footer) */
+.side-menu-lang {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.side-menu-lang select {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 2px 4px;
+    cursor: pointer;
+}
+
+.footer-lang {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: inherit;
+    letter-spacing: 0.04em;
+    padding: 0 2px;
+    min-height: 0 !important;
+    cursor: pointer;
+}
+
+.footer-lang:hover {
+    text-decoration: underline;
+    background: transparent !important;
 }

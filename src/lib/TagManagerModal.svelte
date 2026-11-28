@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TagStats } from './tags'
   import { normalizeText } from './tags'
+  import { t } from './i18n.svelte'
 
   type Props = {
     open: boolean
@@ -60,7 +61,7 @@
       await onrenametag(oldLabel, clean)
       renamingTag = null
     } catch (e) {
-      errorMessage = e instanceof Error ? e.message : 'Could not rename tag'
+      errorMessage = e instanceof Error ? e.message : t('tagManager.errRename')
     } finally {
       busy = false
     }
@@ -69,14 +70,14 @@
   async function handleMergeSubmit(sourceLabel: string) {
     const target = mergeTarget.trim()
     if (!target) {
-      errorMessage = 'Please choose or enter a target tag.'
+      errorMessage = t('tagManager.errTargetRequired')
       return
     }
     if (normalizeText(target) === normalizeText(sourceLabel)) {
-      errorMessage = 'Source and target tag must be different.'
+      errorMessage = t('tagManager.errSameTarget')
       return
     }
-    if (!confirm(`Merge all occurrences of “${sourceLabel}” into “${target}”? Duplicate tags on the same image will be combined cleanly.`)) {
+    if (!confirm(t('tagManager.confirmMergeDialog', { source: sourceLabel, target }))) {
       return
     }
     busy = true
@@ -86,20 +87,20 @@
       mergingSource = null
       mergeTarget = ''
     } catch (e) {
-      errorMessage = e instanceof Error ? e.message : 'Could not merge tags'
+      errorMessage = e instanceof Error ? e.message : t('tagManager.errMerge')
     } finally {
       busy = false
     }
   }
 
   async function handleDelete(label: string) {
-    if (!confirm(`Delete tag “${label}” everywhere in your library?`)) return
+    if (!confirm(t('tagManager.confirmDeleteDialog', { label }))) return
     busy = true
     errorMessage = ''
     try {
       await ondeletetag(label)
     } catch (e) {
-      errorMessage = e instanceof Error ? e.message : 'Could not delete tag'
+      errorMessage = e instanceof Error ? e.message : t('tagManager.errDelete')
     } finally {
       busy = false
     }
@@ -108,26 +109,26 @@
 
 {#if open}
   <div class="tag-manager-layer">
-    <button class="tag-manager-scrim" type="button" aria-label="Close tag manager" onclick={onclose}></button>
+    <button class="tag-manager-scrim" type="button" aria-label={t('tagManager.close')} onclick={onclose}></button>
     <dialog open class="tag-manager-dialog" aria-modal="true" aria-labelledby="tag-manager-title">
       <div class="tag-manager-heading">
-        <h2 id="tag-manager-title">TAG MANAGER</h2>
-        <button type="button" class="close-btn" aria-label="Close tag manager" onclick={onclose}>×</button>
+        <h2 id="tag-manager-title">{t('tagManager.title')}</h2>
+        <button type="button" class="close-btn" aria-label={t('tagManager.close')} onclick={onclose}>×</button>
       </div>
 
       <p class="tag-manager-desc">
-        Manage all tags in your library. Rename tags globally, or merge synonyms to combine duplicate tags.
+        {t('tagManager.desc')}
       </p>
 
       <div class="tag-manager-toolbar">
         <input
           type="search"
-          placeholder="Filter tags…"
+          placeholder={t('tagManager.filterPlaceholder')}
           bind:value={filterQuery}
-          aria-label="Filter tags in manager"
+          aria-label={t('tagManager.filterAria')}
           class="tag-filter-input"
         />
-        <span class="tag-total-badge">{tags.length} tag{tags.length === 1 ? '' : 's'}</span>
+        <span class="tag-total-badge">{t('tagManager.total', { count: tags.length })}</span>
       </div>
 
       {#if errorMessage}
@@ -136,7 +137,7 @@
 
       <div class="tag-manager-list" role="list">
         {#if filteredTags.length === 0}
-          <p class="no-tags">No tags found.</p>
+          <p class="no-tags">{t('tagManager.none')}</p>
         {:else}
           {#each filteredTags as tag (tag.normalized)}
             <div class="tag-manager-row" role="listitem">
@@ -147,26 +148,26 @@
                     bind:value={renameValue}
                     disabled={busy}
                     required
-                    aria-label="New name for {tag.label}"
+                    aria-label={tag.label}
                   />
-                  <button type="submit" disabled={busy || !renameValue.trim()}>Save</button>
-                  <button type="button" disabled={busy} onclick={() => (renamingTag = null)}>Cancel</button>
+                  <button type="submit" disabled={busy || !renameValue.trim()}>{t('tagManager.save')}</button>
+                  <button type="button" disabled={busy} onclick={() => (renamingTag = null)}>{t('gallery.cancel')}</button>
                 </form>
               {:else if mergingSource === tag.label}
                 <div class="tag-merge-form">
                   <div class="merge-prompt">
-                    Merge <strong>{tag.label}</strong> into:
+                    {t('tagManager.mergePrompt', { label: tag.label })}
                   </div>
                   <div class="merge-controls">
                     <select bind:value={mergeTarget} disabled={busy}>
-                      <option value="">-- Choose an existing tag --</option>
-                      {#each tags.filter((t) => t.normalized !== tag.normalized) as candidate (candidate.normalized)}
+                      <option value="">{t('tagManager.chooseTarget')}</option>
+                      {#each tags.filter((item) => item.normalized !== tag.normalized) as candidate (candidate.normalized)}
                         <option value={candidate.label}>{candidate.label} ({candidate.count})</option>
                       {/each}
                     </select>
                     <input
                       type="text"
-                      placeholder="Or enter target tag…"
+                      placeholder={t('tagManager.enterTarget')}
                       bind:value={mergeTarget}
                       disabled={busy}
                     />
@@ -176,22 +177,22 @@
                       disabled={busy || !mergeTarget.trim() || normalizeText(mergeTarget) === tag.normalized}
                       onclick={() => handleMergeSubmit(tag.label)}
                     >
-                      Confirm merge
+                      {t('tagManager.confirmMerge')}
                     </button>
-                    <button type="button" disabled={busy} onclick={() => (mergingSource = null)}>Cancel</button>
+                    <button type="button" disabled={busy} onclick={() => (mergingSource = null)}>{t('gallery.cancel')}</button>
                   </div>
                 </div>
               {:else}
                 <div class="tag-info">
                   <strong class="tag-name">{tag.label}</strong>
-                  <span class="tag-counts" title="{tag.count} uses across {tag.imageCount} images">
-                    {tag.count} {tag.count === 1 ? 'use' : 'uses'} · {tag.imageCount} {tag.imageCount === 1 ? 'image' : 'images'}
+                  <span class="tag-counts">
+                    {t('tagManager.counts', { uses: tag.count, images: tag.imageCount })}
                   </span>
                 </div>
                 <div class="tag-actions">
-                  <button type="button" class="btn-action" disabled={busy} onclick={() => startRename(tag)}>Rename</button>
-                  <button type="button" class="btn-action" disabled={busy} onclick={() => startMerge(tag)}>Merge into…</button>
-                  <button type="button" class="btn-action danger" disabled={busy} onclick={() => handleDelete(tag.label)}>Delete</button>
+                  <button type="button" class="btn-action" disabled={busy} onclick={() => startRename(tag)}>{t('nav.rename')}</button>
+                  <button type="button" class="btn-action" disabled={busy} onclick={() => startMerge(tag)}>{t('viewer.mergeInto')}</button>
+                  <button type="button" class="btn-action danger" disabled={busy} onclick={() => handleDelete(tag.label)}>{t('nav.delete')}</button>
                 </div>
               {/if}
             </div>

@@ -3,6 +3,7 @@
   import { authClient } from './auth-client'
   import { formatStorageBytes } from './sync-protocol'
   import type { SyncSnapshot } from './sync'
+  import { t } from './i18n.svelte'
 
   type Props = {
     open: boolean
@@ -54,27 +55,27 @@
     if (!syncState) return ''
     switch (syncState.phase) {
       case 'syncing':
-        return 'Syncing…'
+        return t('account.statusSyncing')
       case 'synced':
         return syncState.lastSyncAt
-          ? `Synced · ${new Date(syncState.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-          : 'Synced'
+          ? t('account.statusSyncedAt', { time: new Date(syncState.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+          : t('account.statusSynced')
       case 'offline':
         return syncState.pendingCount > 0
-          ? `Offline · ${syncState.pendingCount} change${syncState.pendingCount === 1 ? '' : 's'} waiting`
-          : 'Offline'
+          ? t('account.statusOfflinePending', { count: syncState.pendingCount })
+          : t('account.statusOffline')
       case 'quota_full':
-        return 'Cloud storage full'
+        return t('account.statusQuotaFull')
       case 'unavailable':
-        return 'Cloud sync pending server storage setup'
+        return t('account.statusUnavailable')
       case 'account_mismatch':
-        return 'Different account previously synced on this device'
+        return t('account.statusMismatch')
       case 'error':
-        return syncState.errorMessage || 'Sync failed'
+        return syncState.errorMessage || t('account.statusFailed')
       default:
         return syncState.pendingCount > 0
-          ? `${syncState.pendingCount} change${syncState.pendingCount === 1 ? '' : 's'} pending`
-          : 'Ready to sync'
+          ? t('account.statusPending', { count: syncState.pendingCount })
+          : t('account.statusReady')
     }
   })
 
@@ -105,10 +106,10 @@
         callbackURL: window.location.origin,
       })
       message = signInError
-        ? 'Could not send the link. Please try again later.'
-        : 'If this address can receive a sign-in link, it will arrive shortly.'
+        ? t('account.msgSendError')
+        : t('account.msgLinkSent')
     } catch {
-      message = 'Account sign-in is not available right now.'
+      message = t('account.msgUnavailable')
     } finally {
       busy = false
     }
@@ -122,10 +123,10 @@
     try {
       const ok = await onsignout()
       message = ok
-        ? 'You are signed out. Your library stays on this device.'
-        : 'Could not sign out right now. Please try again.'
+        ? t('account.msgSignedOut')
+        : t('account.msgSignOutError')
     } catch {
-      message = 'Could not sign out right now. Please try again.'
+      message = t('account.msgSignOutError')
     } finally {
       busy = false
     }
@@ -139,12 +140,12 @@
       const ok = await ondeleteaccount()
       if (ok) {
         confirmDelete = false
-        message = 'Account and cloud data permanently deleted. Your local library stays on this device.'
+        message = t('account.msgDeleted')
       } else {
-        message = 'Could not delete your account right now. Please try again.'
+        message = t('account.msgDeleteError')
       }
     } catch {
-      message = 'Could not delete your account right now. Please try again.'
+      message = t('account.msgDeleteError')
     } finally {
       busy = false
     }
@@ -166,18 +167,24 @@
         compressProgress = `${done} / ${total}`
       })
       const fmtLabel = result.format.toUpperCase()
-      const skippedNote = result.skippedCount > 0
-        ? ` (${result.skippedCount} skipped)`
+      const skipped = result.skippedCount > 0
+        ? t('account.msgSkipped', { count: result.skippedCount })
         : ''
       if (result.compressedCount > 0) {
-        message = `Optimized ${result.compressedCount} of ${result.total} drawings to ${fmtLabel} (saved ${formatStorageBytes(result.savedBytes)})${skippedNote}.`
+        message = t('account.msgOptimized', {
+          compressed: result.compressedCount,
+          total: result.total,
+          format: fmtLabel,
+          saved: formatStorageBytes(result.savedBytes),
+          skipped,
+        })
       } else {
-        message = `All existing drawings are already compact (${fmtLabel} on this device)${skippedNote}.`
+        message = t('account.msgAlreadyCompact', { format: fmtLabel, skipped })
       }
     } catch (cause) {
       console.error('Could not compress existing drawings', cause)
       const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : ''
-      message = `Could not compress existing drawings${detail}.`
+      message = t('account.msgCompressError', { detail })
     } finally {
       compressProgress = ''
       busy = false
@@ -187,24 +194,24 @@
 
 {#if open}
   <div class="account-layer">
-    <button class="account-scrim" type="button" aria-label="Close account" onclick={onclose}></button>
+    <button class="account-scrim" type="button" aria-label={t('account.close')} onclick={onclose}></button>
     <dialog open class="account-dialog" aria-modal="true" aria-labelledby="account-title">
       <div class="account-heading">
-        <h2 id="account-title">CROP ACCOUNT</h2>
-        <button bind:this={closeButton} type="button" aria-label="Close account" onclick={onclose}>×</button>
+        <h2 id="account-title">{t('account.title')}</h2>
+        <button bind:this={closeButton} type="button" aria-label={t('account.close')} onclick={onclose}>×</button>
       </div>
       {#if session}
-        <p>Signed in as <strong>{session.user.email}</strong></p>
+        <p>{t('account.signedInAs', { email: session.user.email })}</p>
 
         {#if syncState}
           <div class="account-sync">
             <div class="account-sync-row">
-              <span class="account-sync-label">CLOUD SYNC</span>
+              <span class="account-sync-label">{t('account.cloudSync')}</span>
               <span class="account-sync-status">{syncStatusLabel}</span>
             </div>
 
             {#if syncState.phase !== 'unavailable'}
-              <div class="account-quota" aria-label="Cloud storage usage">
+              <div class="account-quota" aria-label={t('account.quotaAria')}>
                 <div class="account-quota-bar">
                   <div class="account-quota-fill" style:width={`${quotaPercent}%`}></div>
                 </div>
@@ -214,18 +221,10 @@
 
             <label class="account-option">
               <input type="checkbox" checked={compressWebp} onchange={ontogglewebp} />
-              {#if compressionFormat === 'webp'}
-                <span>Compress new imports to WebP (max 2400px) to fit 4–5× more drawings in 100 MB</span>
-              {:else}
-                <span>Compress new imports to JPEG on this device (max 2400px) to fit more drawings in 100 MB</span>
-              {/if}
+              <span>{compressionFormat === 'webp' ? t('account.compressWebpLabel') : t('account.compressJpegLabel')}</span>
             </label>
             <small class="account-hint">
-              {#if compressionFormat === 'webp'}
-                This browser encodes WebP. On iPhone / Safari (which cannot encode WebP), Crop automatically uses high-quality JPEG instead.
-              {:else}
-                Safari / iPhone cannot encode WebP, so this device uses high-quality JPEG (max 2400px) and leaves existing WebP drawings untouched. Desktop and Android browsers encode WebP.
-              {/if}
+              {compressionFormat === 'webp' ? t('account.compressWebpHint') : t('account.compressJpegHint')}
             </small>
             {#if drawingCount > 0}
               <button
@@ -234,29 +233,29 @@
                 disabled={busy || syncState?.phase === 'syncing'}
                 onclick={handleCompressExisting}
               >
-                {compressProgress ? `Compressing (${compressProgress})…` : `Compress existing library (${drawingCount})`}
+                {compressProgress ? t('account.compressing', { progress: compressProgress }) : t('account.compressExisting', { count: drawingCount })}
               </button>
             {/if}
 
             {#if syncState.quotaBlockedCount > 0}
               <p class="account-sync-warning" role="status">
-                {syncState.quotaBlockedCount} drawing{syncState.quotaBlockedCount === 1 ? '' : 's'} kept local only — cloud storage is full. Delete drawings to free cloud space; local work and Backup/Restore remain unlimited.
+                {t('account.quotaBlocked', { count: syncState.quotaBlockedCount })}
               </p>
             {/if}
 
             {#if syncState.tooLargeCount > 0}
               <p class="account-sync-warning" role="status">
-                {syncState.tooLargeCount} drawing{syncState.tooLargeCount === 1 ? '' : 's'} exceed{syncState.tooLargeCount === 1 ? 's' : ''} the 20 MB per-image cloud limit and stay local only.
+                {t('account.tooLarge', { count: syncState.tooLargeCount })}
               </p>
             {/if}
 
             {#if syncState.phase === 'account_mismatch'}
               <p class="account-sync-warning" role="status">
-                This device was previously synced with <strong>{syncState.previousAccountEmail}</strong>. Merge the local library into this account, or replace it with this account’s cloud library?
+                {t('account.mismatchPrompt', { email: syncState.previousAccountEmail ?? '' })}
               </p>
               <div class="account-actions">
-                <button type="button" onclick={() => handleSync('merge')}>Merge local</button>
-                <button type="button" onclick={() => handleSync('replace')}>Replace with cloud</button>
+                <button type="button" onclick={() => handleSync('merge')}>{t('account.mergeLocal')}</button>
+                <button type="button" onclick={() => handleSync('replace')}>{t('account.replaceCloud')}</button>
               </div>
             {/if}
           </div>
@@ -265,40 +264,40 @@
         <div class="account-actions">
           {#if syncState?.phase !== 'account_mismatch'}
             <button type="button" disabled={busy || syncState?.phase === 'syncing'} onclick={() => handleSync()}>
-              {syncState?.phase === 'syncing' ? 'Syncing…' : 'Sync now'}
+              {syncState?.phase === 'syncing' ? t('account.statusSyncing') : t('account.syncNow')}
             </button>
           {/if}
           <button bind:this={signOutButton} type="button" disabled={busy} onclick={handleSignOut}>
-            {busy ? 'Signing out…' : 'Sign out'}
+            {busy ? t('account.signingOut') : t('account.signOut')}
           </button>
         </div>
 
         <div class="account-danger">
           {#if confirmDelete}
             <p class="account-sync-warning">
-              <strong>Delete your account permanently?</strong> All cloud copies (folders, drawings, images, and sessions) will be erased from Cloudflare. Your local library on this device stays untouched.
+              <strong>{t('account.deleteConfirmTitle')}</strong> {t('account.deleteConfirmBody')}
             </p>
             <div class="account-actions">
               <button type="button" class="danger-btn" disabled={busy} onclick={handleDeleteAccount}>
-                {busy ? 'Deleting…' : 'Confirm permanent deletion'}
+                {busy ? t('account.deleting') : t('account.confirmDelete')}
               </button>
-              <button type="button" disabled={busy} onclick={() => (confirmDelete = false)}>Cancel</button>
+              <button type="button" disabled={busy} onclick={() => (confirmDelete = false)}>{t('gallery.cancel')}</button>
             </div>
           {:else}
             <button type="button" class="danger-link" disabled={busy} onclick={() => (confirmDelete = true)}>
-              Delete account & cloud data
+              {t('account.deleteAccount')}
             </button>
           {/if}
         </div>
       {:else}
-        <p>Sign in with an email link. No password needed. Your library works offline and syncs across devices when signed in.</p>
+        <p>{t('account.signInIntro')}</p>
         <form class="account-form" onsubmit={handleSendSignInLink}>
-          <label for="account-email">Email address</label>
+          <label for="account-email">{t('account.emailLabel')}</label>
           <input bind:this={emailInput} id="account-email" type="email" autocomplete="email" bind:value={email} required />
-          <button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send sign-in link'}</button>
+          <button type="submit" disabled={busy}>{busy ? t('account.sending') : t('account.sendLink')}</button>
         </form>
       {/if}
-      <p class="account-privacy">No ads, no tracking, no AI training. Cloud storage is used solely to sync your library and can be deleted anytime.</p>
+      <p class="account-privacy">{t('account.privacy')}</p>
       {#if message}<p class="account-message" role="status">{message}</p>{/if}
     </dialog>
   </div>

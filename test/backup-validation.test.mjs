@@ -5,6 +5,12 @@ import {
   SAMPLE_DRAWINGS,
   SAMPLE_FOLDER_ID,
 } from '../src/lib/sample-data.ts'
+import {
+  detectLocale,
+  formatMessage,
+  MESSAGES,
+  SUPPORTED_LOCALES,
+} from '../src/lib/i18n-dict.ts'
 import { findTagged, normalizeText } from '../src/lib/search.ts'
 import {
   computeScaledDimensions,
@@ -298,4 +304,30 @@ test('all bundled sample drawings have valid dimensions, unique tag IDs, and in-
       `Invalid sample drawing: ${sample.id}`,
     )
   }
+})
+
+test('all 5 locales (en, fr, es, ja, zh) have complete, non-empty keys and matching placeholders', () => {
+  assert.deepEqual([...SUPPORTED_LOCALES], ['en', 'fr', 'es', 'ja', 'zh'])
+  const baseKeys = Object.keys(MESSAGES.en).sort()
+  const extractVars = (str) => [...str.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort()
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const dict = MESSAGES[locale]
+    assert.deepEqual(Object.keys(dict).sort(), baseKeys, `Key mismatch in locale ${locale}`)
+    for (const key of baseKeys) {
+      assert.ok(dict[key].trim().length > 0, `Empty translation for ${locale}.${key}`)
+      assert.deepEqual(
+        extractVars(dict[key]),
+        extractVars(MESSAGES.en[key]),
+        `Placeholder mismatch for ${locale}.${key}`,
+      )
+    }
+  }
+
+  assert.equal(detectLocale(['fr-FR', 'en-US']), 'fr')
+  assert.equal(detectLocale(['es-MX']), 'es')
+  assert.equal(detectLocale(['ja-JP']), 'ja')
+  assert.equal(detectLocale(['zh-CN']), 'zh')
+  assert.equal(detectLocale(['de-DE']), 'en')
+  assert.equal(formatMessage('fr', 'toast.undo', { count: 3 }), 'Annuler (3)')
 })
