@@ -40,7 +40,8 @@ export interface SheetLayout {
 /** 2× high-resolution reference sheet width so cropped details stay crisp when zoomed in drawing apps. */
 const SHEET_WIDTH = 2000
 const PADDING = 64
-const HEADER_HEIGHT = 152
+const HEADER_HEIGHT_COMPACT = 96
+const HEADER_HEIGHT_WITH_SUB = 152
 const FOOTER_HEIGHT = 86
 const GAP = 32
 const CAPTION_HEIGHT = 76
@@ -63,9 +64,10 @@ export function columnsFor(count: number): number {
 }
 
 /** Pure layout calculator so tests and renderer share identical geometry and height-capping rules. */
-export function computeSheetLayout(entryCount: number): SheetLayout {
+export function computeSheetLayout(entryCount: number, hasSubtitle = false): SheetLayout {
   const safeCount = Math.max(1, Math.min(entryCount, SHEET_CAPACITY))
   const columns = columnsFor(safeCount)
+  const headerHeight = hasSubtitle ? HEADER_HEIGHT_WITH_SUB : HEADER_HEIGHT_COMPACT
   const innerWidth = SHEET_WIDTH - PADDING * 2
   const cellWidth = Math.floor((innerWidth - GAP * (columns - 1)) / columns)
   const cellHeight = Math.round(cellWidth * TILE_RATIO) + CAPTION_HEIGHT
@@ -73,7 +75,7 @@ export function computeSheetLayout(entryCount: number): SheetLayout {
   const rowsFor = (count: number) => Math.max(1, Math.ceil(count / columns))
   const heightFor = (count: number) =>
     PADDING +
-    HEADER_HEIGHT +
+    headerHeight +
     40 +
     rowsFor(count) * cellHeight +
     (rowsFor(count) - 1) * GAP +
@@ -103,6 +105,14 @@ function upper(text: string): string {
 
 function cleanOrigin(origin: string): string {
   return origin.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+}
+
+function cleanDrawingName(name: string): string {
+  return name.replace(/\.[a-z0-9]{2,5}$/i, '').trim() || name
+}
+
+function normalizeTagTitle(text: string): string {
+  return text.replace(/^#/, '').trim().toLowerCase()
 }
 
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
@@ -173,7 +183,9 @@ async function loadTileImage(entry: SheetEntry, maxW: number, maxH: number): Pro
  * and return it as a PNG blob alongside the exact exported tile count.
  */
 export async function renderSheet(options: SheetOptions): Promise<SheetRenderResult> {
-  const layout = computeSheetLayout(options.entries.length)
+  const subtitle = options.subtitle?.trim() || ''
+  const layout = computeSheetLayout(options.entries.length, subtitle.length > 0)
+  const headerHeight = subtitle.length > 0 ? HEADER_HEIGHT_WITH_SUB : HEADER_HEIGHT_COMPACT
   const entries = options.entries.slice(0, layout.renderedCount)
   const isDark = options.theme === 'dark'
 
@@ -213,7 +225,7 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
 
   // Header bar divider (aligned cleanly with grid edges, no outer frame)
   const headerTop = PADDING
-  const headerBottom = headerTop + HEADER_HEIGHT
+  const headerBottom = headerTop + headerHeight
   ctx.strokeStyle = ink
   ctx.lineWidth = 2
   ctx.beginPath()
@@ -221,9 +233,10 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   ctx.lineTo(rightX, headerBottom)
   ctx.stroke()
 
-  // Square Crop mark + Title on left of header
-  const markSize = 30
-  const markY = headerTop + 22
+  // Square Crop mark + Title on left of header (optically aligned with 46px uppercase baseline)
+  const markSize = 26
+  const titleBaseline = headerTop + 52
+  const markY = titleBaseline - 29
   ctx.strokeStyle = ink
   ctx.lineWidth = 3
   ctx.strokeRect(leftX + 1.5, markY + 1.5, markSize - 3, markSize - 3)
@@ -233,26 +246,29 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
   const dateStr = new Date().toISOString().slice(0, 10)
-  const rightMeta = upper(`${entries.length} ${entries.length === 1 ? 'TILE' : 'TILES'} · ${dateStr}`)
+  const countText = options.total > entries.length
+    ? `${entries.length} / ${options.total}`
+    : `${entries.length} ${entries.length === 1 ? 'IMAGE' : 'IMAGES'}`
+  const rightMeta = upper(`${countText} · ${dateStr}`)
   ctx.font = `400 34px ${FONT}`
   const rightMetaW = ctx.measureText(rightMeta).width
 
   ctx.font = `600 46px ${FONT}`
   const titleMaxW = rightX - (leftX + markSize + 20) - rightMetaW - 32
-  ctx.fillText(fitText(ctx, upper(options.title), Math.max(200, titleMaxW)), leftX + markSize + 20, headerTop + 52)
+  ctx.fillText(fitText(ctx, upper(options.title), Math.max(200, titleMaxW)), leftX + markSize + 20, titleBaseline)
 
   // Right-aligned tile count + date in header
   ctx.fillStyle = muted
   ctx.font = `400 34px ${FONT}`
   ctx.textAlign = 'right'
-  ctx.fillText(rightMeta, rightX, headerTop + 50)
+  ctx.fillText(rightMeta, rightX, titleBaseline - 2)
   ctx.textAlign = 'left'
 
-  // Optional subtitle line in header
-  if (options.subtitle) {
+  // Optional subtitle line in header (only shown when extra filters/tags are active)
+  if (subtitle) {
     ctx.fillStyle = muted
     ctx.font = `400 34px ${FONT}`
-    ctx.fillText(fitText(ctx, upper(options.subtitle), contentWidth), leftX, headerTop + 114)
+    ctx.fillText(fitText(ctx, upper(subtitle), contentWidth), leftX, headerTop + 114)
   }
 
   // Grid of framed reference tiles
@@ -313,7 +329,13 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
     ctx.font = `400 34px ${FONT}`
     ctx.fillText(num, x + 18, captionY)
 
-    const captionText = entry.label ? `#${upper(entry.label)}` : entry.drawing.name
+    const sourceName = upper(cleanDrawingName(entry.drawing.name))
+    const labelMatchesTitle = entry.label
+      ? normalizeTagTitle(entry.label) === normalizeTagTitle(options.title)
+      : false
+    const captionText = entry.label && !labelMatchesTitle
+      ? `#${upper(entry.label)} · ${sourceName}`
+      : sourceName
     ctx.fillStyle = ink
     ctx.font = `400 34px ${FONT}`
     ctx.fillText(fitText(ctx, captionText, layout.cellWidth - 96), x + 76, captionY)

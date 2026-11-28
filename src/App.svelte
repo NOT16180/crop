@@ -1224,14 +1224,13 @@
     const title = activeSearchQuery
       ? `#${activeSearchQuery}`
       : (folderName ? `References · ${folderName}` : 'My references')
-    const subtitleParts = [
-      `${pool.length} ${pool.length === 1 ? 'image' : 'images'}`,
-      ...(selectedTagLabels.length > 1 ? [`tags: ${selectedTagLabels.join(', ')}`] : []),
-    ]
+    const subtitle = selectedTagLabels.length > 1
+      ? `tags: ${selectedTagLabels.join(', ')}`
+      : undefined
     return {
       entries: pool.slice(0, wanted).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
       title,
-      subtitle: subtitleParts.join(' · '),
+      subtitle,
       origin: new URL(import.meta.env.BASE_URL, location.origin).href,
       total: pool.length,
       theme,
