@@ -39,10 +39,9 @@ export interface SheetLayout {
 
 /** 2× high-resolution reference sheet width so cropped details stay crisp when zoomed in drawing apps. */
 const SHEET_WIDTH = 2000
-const OUTER_MARGIN = 48
-const INNER_PADDING = 44
-const HEADER_HEIGHT = 176
-const FOOTER_HEIGHT = 98
+const PADDING = 64
+const HEADER_HEIGHT = 152
+const FOOTER_HEIGHT = 86
 const GAP = 32
 const CAPTION_HEIGHT = 76
 /** Tile height as a share of tile width — balanced 4:3 framing for cropped details and full artworks. */
@@ -67,19 +66,20 @@ export function columnsFor(count: number): number {
 export function computeSheetLayout(entryCount: number): SheetLayout {
   const safeCount = Math.max(1, Math.min(entryCount, SHEET_CAPACITY))
   const columns = columnsFor(safeCount)
-  const innerWidth = SHEET_WIDTH - OUTER_MARGIN * 2 - INNER_PADDING * 2
+  const innerWidth = SHEET_WIDTH - PADDING * 2
   const cellWidth = Math.floor((innerWidth - GAP * (columns - 1)) / columns)
   const cellHeight = Math.round(cellWidth * TILE_RATIO) + CAPTION_HEIGHT
 
   const rowsFor = (count: number) => Math.max(1, Math.ceil(count / columns))
   const heightFor = (count: number) =>
-    OUTER_MARGIN * 2 +
+    PADDING +
     HEADER_HEIGHT +
-    INNER_PADDING +
+    40 +
     rowsFor(count) * cellHeight +
     (rowsFor(count) - 1) * GAP +
-    INNER_PADDING +
-    FOOTER_HEIGHT
+    44 +
+    FOOTER_HEIGHT +
+    PADDING
 
   let renderedCount = safeCount
   while (renderedCount > columns && heightFor(renderedCount) > MAX_SHEET_HEIGHT) {
@@ -207,32 +207,23 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, layout.sheetWidth, layout.sheetHeight)
 
-  // Outer crisp 2px gallery frame (matches Open Graph cards & notgalerie.com DA)
-  const frameX0 = OUTER_MARGIN
-  const frameY0 = OUTER_MARGIN
-  const frameX1 = layout.sheetWidth - OUTER_MARGIN
-  const frameY1 = layout.sheetHeight - OUTER_MARGIN
-  const frameW = frameX1 - frameX0
-  const frameH = frameY1 - frameY0
+  const leftX = PADDING
+  const rightX = layout.sheetWidth - PADDING
+  const contentWidth = rightX - leftX
 
-  ctx.strokeStyle = ink
-  ctx.lineWidth = 2
-  ctx.strokeRect(frameX0 + 1, frameY0 + 1, frameW - 2, frameH - 2)
-
-  // Header bar divider
-  const headerBottom = frameY0 + HEADER_HEIGHT
+  // Header bar divider (aligned cleanly with grid edges, no outer frame)
+  const headerTop = PADDING
+  const headerBottom = headerTop + HEADER_HEIGHT
   ctx.strokeStyle = ink
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(frameX0, headerBottom)
-  ctx.lineTo(frameX1, headerBottom)
+  ctx.moveTo(leftX, headerBottom)
+  ctx.lineTo(rightX, headerBottom)
   ctx.stroke()
 
   // Square Crop mark + Title on left of header
-  const leftX = frameX0 + INNER_PADDING
-  const rightX = frameX1 - INNER_PADDING
   const markSize = 30
-  const markY = frameY0 + 46
+  const markY = headerTop + 22
   ctx.strokeStyle = ink
   ctx.lineWidth = 3
   ctx.strokeRect(leftX + 1.5, markY + 1.5, markSize - 3, markSize - 3)
@@ -248,24 +239,24 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
 
   ctx.font = `600 46px ${FONT}`
   const titleMaxW = rightX - (leftX + markSize + 20) - rightMetaW - 32
-  ctx.fillText(fitText(ctx, upper(options.title), Math.max(200, titleMaxW)), leftX + markSize + 20, frameY0 + 76)
+  ctx.fillText(fitText(ctx, upper(options.title), Math.max(200, titleMaxW)), leftX + markSize + 20, headerTop + 52)
 
   // Right-aligned tile count + date in header
   ctx.fillStyle = muted
   ctx.font = `400 34px ${FONT}`
   ctx.textAlign = 'right'
-  ctx.fillText(rightMeta, rightX, frameY0 + 74)
+  ctx.fillText(rightMeta, rightX, headerTop + 50)
   ctx.textAlign = 'left'
 
   // Optional subtitle line in header
   if (options.subtitle) {
     ctx.fillStyle = muted
     ctx.font = `400 34px ${FONT}`
-    ctx.fillText(fitText(ctx, upper(options.subtitle), frameW - INNER_PADDING * 2), leftX, frameY0 + 136)
+    ctx.fillText(fitText(ctx, upper(options.subtitle), contentWidth), leftX, headerTop + 114)
   }
 
   // Grid of framed reference tiles
-  const gridTop = headerBottom + INNER_PADDING
+  const gridTop = headerBottom + 40
   const imagePad = 18
   const imageAreaHeight = layout.cellHeight - CAPTION_HEIGHT
 
@@ -326,15 +317,15 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   }
 
   // Footer bar
-  const footerTop = frameY1 - FOOTER_HEIGHT
+  const footerTop = layout.sheetHeight - PADDING - FOOTER_HEIGHT
   ctx.strokeStyle = ink
   ctx.lineWidth = 2
   ctx.beginPath()
-  ctx.moveTo(frameX0, footerTop)
-  ctx.lineTo(frameX1, footerTop)
+  ctx.moveTo(leftX, footerTop)
+  ctx.lineTo(rightX, footerTop)
   ctx.stroke()
 
-  const footerTextY = footerTop + Math.round(FOOTER_HEIGHT * 0.63)
+  const footerTextY = footerTop + Math.round(FOOTER_HEIGHT * 0.68)
   ctx.fillStyle = muted
   ctx.font = `400 32px ${FONT}`
   ctx.textAlign = 'left'
