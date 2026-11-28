@@ -218,7 +218,7 @@
     width: 100%;
     height: 100%;
     border: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(33, 33, 33, 0.55);
   }
   .tag-manager-dialog {
     position: relative;

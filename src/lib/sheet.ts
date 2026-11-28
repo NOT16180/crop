@@ -38,8 +38,8 @@ const FONT = '"Inconsolata", "Courier New", monospace'
 
 const BACKGROUND = '#ffffff'
 const CELL = '#ffffff'
-const TEXT = '#000000'
-const MUTED = 'rgba(0, 0, 0, 0.62)'
+const TEXT = '#212121'
+const MUTED = 'rgba(33, 33, 33, 0.62)'
 
 /** Largest number of tiles a sheet can hold before the canvas gets too tall. */
 export const SHEET_CAPACITY = 200
