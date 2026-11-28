@@ -89,6 +89,7 @@
   let storageUsage = $state<{ usage: number; quota: number } | null>(null)
   /** How many images the reference sheet should hold: a number, or every result. */
   let sheetSize = $state('6')
+  let sheetBusy = $state(false)
   let installEvent = $state<{ prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> } | null>(null)
   let installed = $state(false)
   let dragOverFolderId = $state<string | null>(null)
@@ -1213,25 +1214,63 @@
     }
   }
 
-  async function exportSheet() {
-    if (items.length === 0) return
+  function buildSheetOptions(selectedIds?: string[]) {
+    const selectedSet = selectedIds && selectedIds.length > 0 ? new Set(selectedIds) : null
+    const pool = selectedSet ? items.filter((item) => selectedSet.has(item.drawing.id)) : items
+    const wanted = selectedSet
+      ? pool.length
+      : (sheetSize === 'all' ? pool.length : Math.min(Number(sheetSize), pool.length))
+    const folderName = folders.find((folder) => folder.id === selectedFolderId)?.name
+    const title = activeSearchQuery
+      ? `#${activeSearchQuery}`
+      : (folderName ? `References · ${folderName}` : 'My references')
+    const subtitleParts = [
+      `${pool.length} ${pool.length === 1 ? 'image' : 'images'}`,
+      ...(selectedTagLabels.length > 1 ? [`tags: ${selectedTagLabels.join(', ')}`] : []),
+    ]
+    return {
+      entries: pool.slice(0, wanted).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
+      title,
+      subtitle: subtitleParts.join(' · '),
+      origin: new URL(import.meta.env.BASE_URL, location.origin).href,
+      total: pool.length,
+      theme,
+    }
+  }
+
+  async function exportSheet(selectedIds?: string[]) {
+    if (items.length === 0 || sheetBusy) return
     error = ''
+    sheetBusy = true
     try {
       const { downloadSheet } = await import('./lib/sheet')
-      const wanted = sheetSize === 'all' ? items.length : Math.min(Number(sheetSize), items.length)
-      const exported = await downloadSheet({
-        entries: items.slice(0, wanted).map((item) => ({ drawing: item.drawing, box: item.box, label: item.label })),
-        title: activeSearchQuery ? `#${activeSearchQuery}` : (folders.find((folder) => folder.id === selectedFolderId)?.name
-          ? `References · ${folders.find((folder) => folder.id === selectedFolderId)!.name}`
-          : 'My references'),
-        subtitle: `${items.length} image${items.length === 1 ? '' : 's'}${selectedTagLabels.length > 1 ? ` · tags: ${selectedTagLabels.join(', ')}` : ''}`,
-        origin: new URL(import.meta.env.BASE_URL, location.origin).href,
-        total: items.length,
-      })
-      notice = `Reference sheet exported with ${exported} image${exported === 1 ? '' : 's'}.`
+      const exported = await downloadSheet(buildSheetOptions(selectedIds))
+      notice = t('sheet.exported', { count: exported })
     } catch (cause) {
       console.error('Could not export the reference sheet', cause)
-      error = 'Could not export the reference sheet.'
+      error = t('sheet.exportError')
+    } finally {
+      sheetBusy = false
+    }
+  }
+
+  async function copySheet(selectedIds?: string[]) {
+    if (items.length === 0 || sheetBusy) return
+    error = ''
+    sheetBusy = true
+    try {
+      const { copySheetToClipboard } = await import('./lib/sheet')
+      const copied = await copySheetToClipboard(buildSheetOptions(selectedIds))
+      notice = t('sheet.copied', { count: copied })
+    } catch (cause) {
+      if (cause instanceof Error && cause.message === 'CLIPBOARD_UNSUPPORTED') {
+        error = t('sheet.copyUnsupported')
+      } else {
+        console.error('Could not copy the reference sheet', cause)
+        error = t('sheet.exportError')
+      }
+    } finally {
+      sheetBusy = false
     }
   }
 
@@ -1610,6 +1649,7 @@
   {#if drawings.length === 0}
     <section class="empty">
       <h2>{t('empty.title')}</h2>
+      <p class="empty-pitch">{t('empty.pitch')}</p>
       <p>{t('empty.subtitle')}</p>
       <div class="empty-actions">
         <button type="button" class="add-image-button" onclick={() => fileInput.click()}>{t('toolbar.addImages')}</button>
@@ -1660,6 +1700,7 @@
       {selectedTagLabels}
       {sortMode}
       {sheetSize}
+      {sheetBusy}
       {folders}
       {selectedFolderId}
       localOnlyIds={localOnlyDrawingIds}
@@ -1671,6 +1712,7 @@
       oncopycrop={handleCopyCrop}
       ondownloadcrop={handleDownloadCrop}
       onexportsheet={exportSheet}
+      oncopysheet={copySheet}
       onmovedrawing={moveDrawing}
       onswapdrawings={swapDrawings}
       onmoveselected={moveSelectedDrawings}

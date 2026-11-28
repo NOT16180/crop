@@ -23,6 +23,7 @@
     selectedTagLabels: string[]
     sortMode: 'manual' | 'name' | 'newest' | 'oldest'
     sheetSize: string
+    sheetBusy?: boolean
     folders: FolderRecord[]
     selectedFolderId: string
     localOnlyIds?: ReadonlySet<string>
@@ -33,7 +34,8 @@
     onrepairdrawing: (drawing: DrawingRecord) => void
     oncopycrop: (blob: Blob, box: Rect | null, name: string) => void
     ondownloadcrop: (blob: Blob, box: Rect | null, baseName: string) => void
-    onexportsheet: () => void
+    onexportsheet: (selectedIds?: string[]) => void
+    oncopysheet: (selectedIds?: string[]) => void
     onmovedrawing: (id: string, offset: number) => void
     onswapdrawings: (sourceId: string, targetId: string) => void
     onmoveselected: (folderId: string | undefined, ids: string[]) => void
@@ -57,6 +59,7 @@
     selectedTagLabels,
     sortMode,
     sheetSize,
+    sheetBusy = false,
     folders,
     selectedFolderId,
     localOnlyIds,
@@ -68,6 +71,7 @@
     oncopycrop,
     ondownloadcrop,
     onexportsheet,
+    oncopysheet,
     onmovedrawing,
     onswapdrawings,
     onmoveselected,
@@ -197,7 +201,18 @@
     {:else}
       <button type="button" onclick={() => (arrangingDrawings = false)}>{t('gallery.doneArranging')}</button>
     {/if}
-    <button type="button" onclick={onexportsheet} disabled={items.length === 0} title={t('gallery.exportSheetTitle')}>{t('gallery.exportSheet')}</button>
+    <button
+      type="button"
+      onclick={() => onexportsheet(selectionMode && selectedDrawingIds.length > 0 ? selectedDrawingIds : undefined)}
+      disabled={items.length === 0 || sheetBusy}
+      title={t('gallery.exportSheetTitle')}
+    >{sheetBusy ? t('gallery.exportingSheet') : t('gallery.exportSheet')}</button>
+    <button
+      type="button"
+      onclick={() => oncopysheet(selectionMode && selectedDrawingIds.length > 0 ? selectedDrawingIds : undefined)}
+      disabled={items.length === 0 || sheetBusy}
+      title={t('gallery.copySheetTitle')}
+    >{t('gallery.copySheet')}</button>
     <label>{t('gallery.sheet')}
       <select value={sheetSize} onchange={(e) => onsheetsizechange(e.currentTarget.value)} aria-label={t('gallery.sheetAria')}>
         <option value="6">{t('gallery.sheetImages', { count: 6 })}</option>

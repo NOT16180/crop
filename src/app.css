@@ -540,6 +540,11 @@ main {
     color: var(--muted);
 }
 
+.empty .empty-pitch {
+    margin: 10px 0 12px;
+    color: var(--text);
+}
+
 .drop-overlay {
     position: fixed;
     inset: 0;

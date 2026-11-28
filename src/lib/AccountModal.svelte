@@ -426,6 +426,7 @@
             {busy ? t('account.signingOut') : t('account.signOut')}
           </button>
         </div>
+        <small class="account-hint">{t('account.signOutHint')}</small>
 
         <div class="account-danger">
           {#if confirmDelete}

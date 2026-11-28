@@ -1,85 +1,85 @@
 # Crop
 
-**Crop is an early version of a personal drawing library.** It helps you organize images with manually assigned tags and find drawings or specific areas within them. Images and tags are stored locally in IndexedDB for instant offline use, with optional email-link sign-in and cloud sync across devices (Cloudflare D1 + R2, 100 MB default quota per account).
+**Crop is a local-first drawing reference library** built for illustrators and artists. Tag whole images or specific cropped regions (hands, faces, hatching, textures…), then search a tag to pull up every matching detail instantly.
+
+Live at [crop.notgalerie.com](https://crop.notgalerie.com).
+
+- **100% local & unlimited without an account**: drawings, thumbnails, folders, and tags live in IndexedDB for instant offline use.
+- **Optional cloud sync**: sign in with a passwordless email link to sync across devices via Cloudflare D1 + R2 (**100 MB free**, or **Crop Pro 5 GB** at €2.50/month or €15/year via Polar with 1-click cancel/resume).
+- **5 languages**: English, Français, Español, 日本語, and 中文 (auto-detected from the browser, switchable anytime).
+- **No ads, no tracking, no AI training.**
 
 ## Try Crop locally
-
-To run the app on your computer:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the address shown in the terminal (usually http://localhost:5173).
+Open the address shown in the terminal (usually `http://localhost:5173`).
 
 ## Features
 
-- Import PNG, JPG, WebP, or AVIF images by dragging them onto the page or clicking **Add**. You can also paste an image from the clipboard. Files the browser cannot decode are reported individually.
-- Create, rename, delete, and switch folders. Deleting a folder leaves its drawings in the unfiled collection.
-- Select several drawings to move them together. Use **Arrange drawings** and the arrow buttons to reorder them on touch screens; drag cards to swap their positions on desktop.
-- Open a drawing and drag a rectangle to tag a specific area, or leave the image unselected to tag the whole drawing.
-- Choose which tags appear on a drawing from its **Tags** menu. Tags with the same name are grouped and can be toggled together.
-- Search for a tag or choose one from the **Tags** menu to find matching drawings and regions.
-- Download a local ZIP archive of drawings, folders, and tags with **Backup**. **Restore** validates and merges an archive into the current library. Restores are limited to 600 MB compressed and 512 MB expanded. The archive is not uploaded or synced.
-- Export the images currently shown as a single PNG sheet with **Export sheet**: tagged areas are cropped, tag names are written under each tile, and the app address is printed at the bottom. Pick how many images the sheet holds with the **Sheet** menu, or *All images* for every result.
-- Install Crop from the browser menu (*Install*, or *Add to Home screen*) to keep it working with no network: the app shell is cached, and installing is what makes browser storage persistent.
-- Undo single and bulk drawing deletions for eight seconds.
-- Tell duplicate filenames apart by their import date and a short ID.
-- Switch between light and dark mode with the theme button.
+- **Import & paste**: drag PNG, JPG, WebP, or AVIF images onto the page, click **Add images**, or paste from the clipboard. Files the browser cannot decode are reported individually.
+- **Try immediately with samples**: load 4 curated ink artworks with pre-tagged regions (`face`, `hands`, `hatching`, `object`) in one click, kept local-only and removable anytime.
+- **Region & whole-image tagging**: drag a rectangle over any detail to tag that crop, or tag the whole drawing. Resize boxes, group duplicate tag names, rename/merge tags globally via the Tag Manager, and filter by multiple tags (`ALL` / `ANY`).
+- **Crisp previews & optional compression**: 960 px high-quality thumbnails with background upgrade for older imports, plus optional WebP compression (automatic high-quality JPEG fallback on Safari/iOS).
+- **Folders & manual ordering**: create, rename, and delete folders; select multiple drawings to move them; drag to reorder on desktop or use arrow controls on touch screens.
+- **Local ZIP backup & restore**: streaming ZIP export and validated merge restore (up to 600 MB compressed / 512 MB expanded), fully offline.
+- **2× HD reference sheets (download or copy)**: export or 1-click copy a 2000 px high-resolution editorial PNG contact sheet (light or `#212121` dark theme matching the app, numbered tiles with cropped tag regions and captions, exports only selected drawings when in selection mode).
+- **Offline PWA & themes**: installable offline app with persistent storage request, `#212121` monochrome light & dark themes, and 8-second undo on deletions.
 
-## Data and privacy
+## Data, privacy & cloud sync
 
-Drawings and tags are stored locally in IndexedDB so Crop works offline. The selected theme is stored in local storage. When signed in, folders, drawings, tags, and image blobs sync to your account via Cloudflare D1 and R2 (up to 100 MB per account, 20 MB per image); without an account, nothing is uploaded. Keep the original image files too, and make backups regularly.
+Without an account, nothing leaves your browser: all images and tags stay in IndexedDB on your device. Signing out only stops cloud sync and keeps all local drawings intact.
 
-Crop asks the browser for persistent storage when it starts and again after the first import, and shows how much room the library takes. Browsers grant persistence to apps they trust, so installing Crop is the reliable way to keep a library out of reach of automatic cleanup.
+When signed in, folders, drawings, tags, and blobs sync to Cloudflare D1 and R2 (100 MB free quota, or 5 GB with Crop Pro; 20 MB max per image). You can delete your account and all cloud data anytime from the Account modal. Keep original files and export ZIP backups regularly.
 
 ## Feedback
 
-Use the **Feedback** link in Crop or [open the feedback form](https://github.com/NOT16180/crop/issues/new?template=feedback.yml) to share what worked or what could be better. Feedback is submitted as a public GitHub issue; do not include personal information or private artwork.
-
-## Promoting the first version
-
-You can describe Crop as an early version or beta and invite people who draw to try it. For example:
-
-> I'm sharing the first version of Crop, a personal library for organizing drawings with tags and finding details in images. Files stay in your browser. I'm looking for people who draw to try the app and share their feedback.
-
-Include a short demo or a few screenshots with your post, then share it in communities where potential users spend time. Ask which tasks feel easy, where they get stuck, and what is missing.
+Use the **Feedback** link in Crop or [open the feedback form](https://github.com/NOT16180/crop/issues/new?template=feedback.yml). Feedback creates a public GitHub issue; do not include personal information or private artwork.
 
 ## Deploy to Cloudflare
 
-Crop is served as static assets by a Cloudflare Worker. The Worker also provides the account API and connects to a D1 database:
+Crop is served by a Cloudflare Worker with static assets (`dist`), a D1 database (`crop-auth`), and an R2 bucket (`crop-blobs`):
 
-1. Create a Worker connected to this Git repository in **Workers & Pages**.
-2. Set the build command to `npm run build` and the deploy command to `npx wrangler deploy --keep-vars` so dashboard variables are preserved.
-3. Create the D1 database with `npx wrangler d1 create crop-auth` and put the returned database ID in `wrangler.jsonc`.
-4. Set the Worker variables and secrets described below, then apply the account schema with `npx wrangler d1 migrations apply crop-auth --remote`.
-5. Deploy. `wrangler.jsonc` points Wrangler to `dist`, and the `public/_headers` file is copied into that directory to set response headers.
+1. Configure `wrangler.jsonc` with your D1 `database_id`, R2 `bucket_name`, and custom domain route.
+2. Apply all D1 migrations (`0001_accounts.sql` through `0004_billing.sql`):
+   ```bash
+   npx wrangler d1 migrations apply crop-auth --remote
+   ```
+3. Set plain-text vars in `wrangler.jsonc` or Cloudflare Dashboard:
+   - `AUTH_URL`: exact public HTTPS origin (e.g. `https://crop.notgalerie.com`)
+   - `AUTH_EMAIL_FROM`: verified Resend sender (e.g. `Crop <login@mail.notgalerie.com>`)
+   - `POLAR_PRODUCT_MONTHLY_ID` and `POLAR_PRODUCT_ANNUAL_ID`: Polar product IDs for Crop Pro 5 GB
+4. Set encrypted Worker secrets via Wrangler CLI (never commit them):
+   - `BETTER_AUTH_SECRET`
+   - `RESEND_API_KEY`
+   - `POLAR_ACCESS_TOKEN`
+   - `POLAR_WEBHOOK_SECRET`
+5. Build and deploy:
+   ```bash
+   npm run build && npx wrangler deploy
+   ```
 
-In Cloudflare, open **Workers & Pages → crop → Settings → Variables and Secrets**. Add these as plain text variables (they are configuration, not credentials):
+Sign-in links expire after 10 minutes with hashed tokens and D1 IP rate limiting. Polar webhooks are verified with Standard Webhooks HMAC-SHA256 signatures and replay protection.
 
-- `AUTH_URL`: the exact public origin, such as `https://crop.example.com` (HTTPS, no path).
-- `AUTH_EMAIL_FROM`: a sender on the verified email domain, such as `Crop <login@example.com>`.
+For local Worker testing, put those secrets in an ignored `.dev.vars` file, run `npx wrangler d1 migrations apply crop-auth --local`, then `npm run build && npx wrangler dev`.
 
-In Resend, verify the sending domain by adding its requested DNS records, then create an API key with **Sending access** restricted to that domain. In your local terminal, set both values as Worker secrets:
+## Design language & Open Graph
 
-- `BETTER_AUTH_SECRET`: generate it locally with `npx auth@latest secret`, then run `npx wrangler secret put BETTER_AUTH_SECRET` and paste it into Wrangler's hidden prompt.
-- `RESEND_API_KEY`: run `npx wrangler secret put RESEND_API_KEY` and paste the restricted Resend key into Wrangler's hidden prompt.
+Crop shares the visual language of [notgalerie.com](https://notgalerie.com): **Inconsolata** self-hosted monospace, `#212121` charcoal ink on `#ffffff` paper (and `#212121` dark gallery mode), crisp 1 px borders, square corners, and uppercase chrome.
 
-Never put either secret in `wrangler.jsonc`, source code, a commit, or a chat. Wrangler stores secrets encrypted; its `secret put` command prompts for the value and deploys a Worker version. Keep dashboard variables on later CLI deployments by using `--keep-vars`.
+To regenerate the `1200×630` Open Graph card (`public/og-crop.jpg`) after editing text or artwork in `scripts/generate-og.py`:
 
-Sign-in links expire after 10 minutes; their tokens are hashed in D1. Requests for links are limited to three per IP per minute, with persistent rate-limit counters in D1. The Worker only trusts the configured HTTPS origin and uses Cloudflare's client IP header for rate limiting.
+```bash
+python3 scripts/generate-og.py
+```
 
-For local Worker development, create an ignored `.dev.vars` file with those four values. Use a separate local D1 database with `npx wrangler d1 migrations apply crop-auth --local`. Run `npm run build` and then `npx wrangler dev` to use the Worker locally. `npm run dev` starts Vite's static development server and does not provide the account API.
+## Development & checks
 
-For a manual deployment, run `npm install`, `npm run build`, then `npx wrangler deploy --keep-vars`. Pages-only deployment is no longer sufficient for the account API; the site must run through the configured Worker.
+Built with Vite, Svelte 5, TypeScript, Dexie (IndexedDB), `fflate`, and Better Auth.
 
-## Design language
-
-Crop follows the same visual language as [notgalerie.com](https://notgalerie.com): **Inconsolata** monospace, black on white, 1px borders, square corners, and uppercase chrome. The font is served by the app itself (no Google Fonts request, and it keeps working offline). Buttons, section titles and labels are uppercase like the site; user text — file names, tags, help copy — keeps its own case so it stays readable.
-
-The app icon is a black outline square on a white background.
-
-## Technology
-
-Vite, Svelte, TypeScript, and Dexie/IndexedDB, with a service worker that caches the app shell for offline use. Build with `npm run build`; check types and Svelte components with `npm run check`; run the unit tests with `npm test`.
+- `npm run check` — Svelte + TypeScript checks
+- `npm run build` — production client bundle
+- `npm test` — unit, sync, auth, Polar billing, i18n parity, and security test suite (40 tests)

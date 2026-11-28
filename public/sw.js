@@ -5,7 +5,7 @@
 // new deployment is picked up as soon as the device is online; hashed assets are
 // cache-first because their names change with every build.
 
-const CACHE = 'crop-shell-v18'
+const CACHE = 'crop-shell-v19'
 const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.svg', './icon-192.png', './icon-512.png']
 
 self.addEventListener('install', (event) => {

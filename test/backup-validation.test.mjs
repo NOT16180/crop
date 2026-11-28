@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { isValidBackupDrawing } from '../src/lib/backup-validation.ts'
+import { columnsFor, computeSheetLayout, SHEET_CAPACITY } from '../src/lib/sheet.ts'
 import {
   SAMPLE_DRAWINGS,
   SAMPLE_FOLDER_ID,
@@ -330,4 +331,26 @@ test('all 5 locales (en, fr, es, ja, zh) have complete, non-empty keys and match
   assert.equal(detectLocale(['zh-CN']), 'zh')
   assert.equal(detectLocale(['de-DE']), 'en')
   assert.equal(formatMessage('fr', 'toast.undo', { count: 3 }), 'Annuler (3)')
+})
+
+test('computeSheetLayout produces 2x HD responsive columns and caps canvas height safely', () => {
+  assert.equal(columnsFor(1), 1)
+  assert.equal(columnsFor(6), 2)
+  assert.equal(columnsFor(12), 3)
+  assert.equal(columnsFor(24), 4)
+
+  const single = computeSheetLayout(1)
+  assert.equal(single.sheetWidth, 2000)
+  assert.equal(single.columns, 1)
+  assert.equal(single.renderedCount, 1)
+
+  const study = computeSheetLayout(6)
+  assert.equal(study.columns, 2)
+  assert.equal(study.rows, 3)
+  assert.equal(study.renderedCount, 6)
+  assert.ok(study.cellWidth >= 850)
+
+  const huge = computeSheetLayout(SHEET_CAPACITY)
+  assert.ok(huge.sheetHeight <= 16000)
+  assert.ok(huge.renderedCount >= 4 && huge.renderedCount <= SHEET_CAPACITY)
 })
