@@ -41,10 +41,10 @@ export interface SheetLayout {
 const SHEET_WIDTH = 2000
 const OUTER_MARGIN = 48
 const INNER_PADDING = 44
-const HEADER_HEIGHT = 148
-const FOOTER_HEIGHT = 82
+const HEADER_HEIGHT = 176
+const FOOTER_HEIGHT = 98
 const GAP = 32
-const CAPTION_HEIGHT = 54
+const CAPTION_HEIGHT = 76
 /** Tile height as a share of tile width — balanced 4:3 framing for cropped details and full artworks. */
 const TILE_RATIO = 0.8
 /** Browser-safe canvas height ceiling (16,000 px works reliably on desktop and mobile). */
@@ -195,9 +195,9 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   // Ensure self-hosted Inconsolata is loaded before drawing text onto the canvas.
   try {
     await Promise.all([
-      document.fonts.load(`600 54px ${FONT}`),
-      document.fonts.load(`400 28px ${FONT}`),
-      document.fonts.load(`400 22px ${FONT}`),
+      document.fonts.load(`600 46px ${FONT}`),
+      document.fonts.load(`400 34px ${FONT}`),
+      document.fonts.load(`400 32px ${FONT}`),
     ])
   } catch {
     // Fallback monospace is acceptable.
@@ -243,7 +243,7 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   ctx.textAlign = 'left'
   const dateStr = new Date().toISOString().slice(0, 10)
   const rightMeta = upper(`${entries.length} ${entries.length === 1 ? 'TILE' : 'TILES'} · ${dateStr}`)
-  ctx.font = `400 24px ${FONT}`
+  ctx.font = `400 34px ${FONT}`
   const rightMetaW = ctx.measureText(rightMeta).width
 
   ctx.font = `600 46px ${FONT}`
@@ -252,16 +252,16 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
 
   // Right-aligned tile count + date in header
   ctx.fillStyle = muted
-  ctx.font = `400 24px ${FONT}`
+  ctx.font = `400 34px ${FONT}`
   ctx.textAlign = 'right'
-  ctx.fillText(rightMeta, rightX, frameY0 + 72)
+  ctx.fillText(rightMeta, rightX, frameY0 + 74)
   ctx.textAlign = 'left'
 
   // Optional subtitle line in header
   if (options.subtitle) {
     ctx.fillStyle = muted
-    ctx.font = `400 24px ${FONT}`
-    ctx.fillText(fitText(ctx, upper(options.subtitle), frameW - INNER_PADDING * 2), leftX, frameY0 + 118)
+    ctx.font = `400 34px ${FONT}`
+    ctx.fillText(fitText(ctx, upper(options.subtitle), frameW - INNER_PADDING * 2), leftX, frameY0 + 136)
   }
 
   // Grid of framed reference tiles
@@ -300,7 +300,7 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
       }
     } catch {
       ctx.fillStyle = muted
-      ctx.font = `400 24px ${FONT}`
+      ctx.font = `400 32px ${FONT}`
       ctx.fillText('IMAGE UNAVAILABLE', x + imagePad, y + imageAreaHeight / 2)
     }
 
@@ -314,15 +314,15 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
     ctx.stroke()
 
     const num = String(index + 1).padStart(2, '0')
-    const captionY = captionTop + Math.round(CAPTION_HEIGHT * 0.67)
+    const captionY = captionTop + Math.round(CAPTION_HEIGHT * 0.66)
     ctx.fillStyle = muted
-    ctx.font = `400 22px ${FONT}`
-    ctx.fillText(num, x + 16, captionY)
+    ctx.font = `400 34px ${FONT}`
+    ctx.fillText(num, x + 18, captionY)
 
     const captionText = entry.label ? `#${upper(entry.label)}` : entry.drawing.name
     ctx.fillStyle = ink
-    ctx.font = `400 22px ${FONT}`
-    ctx.fillText(fitText(ctx, captionText, layout.cellWidth - 76), x + 56, captionY)
+    ctx.font = `400 34px ${FONT}`
+    ctx.fillText(fitText(ctx, captionText, layout.cellWidth - 96), x + 76, captionY)
   }
 
   // Footer bar
@@ -334,9 +334,9 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
   ctx.lineTo(frameX1, footerTop)
   ctx.stroke()
 
-  const footerTextY = footerTop + Math.round(FOOTER_HEIGHT * 0.62)
+  const footerTextY = footerTop + Math.round(FOOTER_HEIGHT * 0.63)
   ctx.fillStyle = muted
-  ctx.font = `400 22px ${FONT}`
+  ctx.font = `400 32px ${FONT}`
   ctx.textAlign = 'left'
   ctx.fillText(upper(`MADE WITH CROP · ${cleanOrigin(options.origin)}`), leftX, footerTextY)
 
