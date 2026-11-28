@@ -57,6 +57,19 @@ interface PolarSubscriptionObject {
 
 const DEFAULT_POLAR_API_BASE = 'https://api.polar.sh'
 const WEBHOOK_TOLERANCE_SECONDS = 300
+const MAX_WEBHOOK_BODY_BYTES = 256 * 1024 // 256 KiB
+
+export function isAllowedPolarRedirectUrl(rawUrl: unknown): rawUrl is string {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return false
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== 'https:') return false
+    const host = parsed.hostname.toLowerCase()
+    return host === 'polar.sh' || host.endsWith('.polar.sh')
+  } catch {
+    return false
+  }
+}
 
 function jsonNoStore(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -264,7 +277,38 @@ async function applySubscriptionToUser(params: {
           ? 'active'
           : 'unknown'
 
-  const isPro = isEntitledProStatus(eventType, rawStatus) && isConfiguredProProduct(productId, config)
+  const isConfiguredProduct = isConfiguredProProduct(productId, config)
+  const isPro = isEntitledProStatus(eventType, rawStatus) && isConfiguredProduct
+
+  // Guard against a webhook for an unrelated product or a different/stale subscription ID
+  // downgrading a user who currently holds an active Pro subscription.
+  const existing = await db
+    .prepare('SELECT polar_subscription_id, plan, status FROM user_subscription WHERE user_id = ?')
+    .bind(userId)
+    .first<{ polar_subscription_id: string | null; plan: string; status: string }>()
+
+  if (!isConfiguredProduct) {
+    return {
+      plan: existing?.plan === 'pro' ? 'pro' : 'free',
+      quotaBytes: existing?.plan === 'pro' ? PRO_QUOTA_BYTES : DEFAULT_QUOTA_BYTES,
+      status: existing?.status ?? 'none',
+    }
+  }
+
+  if (
+    !isPro &&
+    existing?.plan === 'pro' &&
+    existing.polar_subscription_id &&
+    polarSubId &&
+    existing.polar_subscription_id !== polarSubId
+  ) {
+    return {
+      plan: 'pro',
+      quotaBytes: PRO_QUOTA_BYTES,
+      status: existing.status,
+    }
+  }
+
   const plan: BillingPlan = isPro ? 'pro' : 'free'
   const quotaBytes = isPro ? PRO_QUOTA_BYTES : DEFAULT_QUOTA_BYTES
   const currentPeriodEnd = parseTimestampMs(sub.current_period_end)
@@ -328,7 +372,15 @@ export async function handlePolarWebhook(
     return jsonNoStore({ error: 'Billing webhook is not configured' }, 503)
   }
 
+  const declaredLen = Number(request.headers.get('Content-Length') ?? '0')
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_WEBHOOK_BODY_BYTES) {
+    return jsonNoStore({ error: 'Webhook payload too large', code: 'PAYLOAD_TOO_LARGE' }, 413)
+  }
+
   const rawBody = await request.text()
+  if (new TextEncoder().encode(rawBody).byteLength > MAX_WEBHOOK_BODY_BYTES) {
+    return jsonNoStore({ error: 'Webhook payload too large', code: 'PAYLOAD_TOO_LARGE' }, 413)
+  }
   const nowMs = (deps.now ?? Date.now)()
   const valid = await verifyPolarWebhookSignature({
     rawBody,
@@ -391,6 +443,7 @@ async function refreshSubscriptionFromPolar(params: {
   const url = `${base}/v1/subscriptions/?external_customer_id=${encodeURIComponent(userId)}&limit=10`
   const response = await fetchFn(url, {
     method: 'GET',
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Authorization: `Bearer ${config.accessToken}`,
       Accept: 'application/json',
@@ -510,6 +563,7 @@ export async function handleBillingRequest(
 
     const polarRes = await fetchFn(`${apiBase}/v1/checkouts/`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${deps.config.accessToken}`,
         'Content-Type': 'application/json',
@@ -532,7 +586,7 @@ export async function handleBillingRequest(
     }
 
     const checkout = (await polarRes.json().catch(() => null)) as { url?: string } | null
-    if (!checkout?.url) {
+    if (!isAllowedPolarRedirectUrl(checkout?.url)) {
       return jsonNoStore({ error: 'Invalid checkout response', code: 'CHECKOUT_FAILED' }, 502)
     }
 
@@ -555,6 +609,7 @@ export async function handleBillingRequest(
 
     const polarRes = await fetchFn(`${apiBase}/v1/customer-sessions/`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10_000),
       headers: {
         Authorization: `Bearer ${deps.config.accessToken}`,
         'Content-Type': 'application/json',
@@ -568,7 +623,7 @@ export async function handleBillingRequest(
     }
 
     const session = (await polarRes.json().catch(() => null)) as { customer_portal_url?: string } | null
-    if (!session?.customer_portal_url) {
+    if (!isAllowedPolarRedirectUrl(session?.customer_portal_url)) {
       return jsonNoStore({ error: 'Invalid portal response', code: 'PORTAL_FAILED' }, 502)
     }
 

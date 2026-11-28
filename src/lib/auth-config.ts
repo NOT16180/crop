@@ -45,9 +45,11 @@ export const AUTH_SCHEMA_CONFIG = {
 }
 
 export const AUTH_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
 }
 
 export function resolveAuthBaseURL(rawAuthUrl: string): string {

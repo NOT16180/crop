@@ -176,7 +176,7 @@ function isValidDrawingPayload(value: unknown): value is SyncDrawingPayload {
   if (!Array.isArray(d.tags) || d.tags.length > 500 || !d.tags.every(isValidTag)) return false
   if (
     d.visibleTagIds !== null &&
-    (!Array.isArray(d.visibleTagIds) || !d.visibleTagIds.every((id) => isValidSyncId(id)))
+    (!Array.isArray(d.visibleTagIds) || d.visibleTagIds.length > 500 || !d.visibleTagIds.every((id) => isValidSyncId(id)))
   ) {
     return false
   }
