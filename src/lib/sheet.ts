@@ -286,6 +286,9 @@ export async function renderSheet(options: SheetOptions): Promise<SheetRenderRes
         const drawX = Math.round(x + (layout.cellWidth - drawW) / 2)
         const drawY = Math.round(y + imagePad + (maxH - drawH) / 2)
         ctx.drawImage(tile.source, tile.sx, tile.sy, tile.sw, tile.sh, drawX, drawY, drawW, drawH)
+        ctx.strokeStyle = ink
+        ctx.lineWidth = 2
+        ctx.strokeRect(drawX + 1, drawY + 1, Math.max(1, drawW - 2), Math.max(1, drawH - 2))
       } finally {
         tile.source.close()
       }
