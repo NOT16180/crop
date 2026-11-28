@@ -4,7 +4,6 @@
 
   type Props = {
     menuOpen: boolean
-    theme: 'dark' | 'light'
     compressWebp: boolean
     compressionFormat: 'webp' | 'jpeg'
     showHelp: boolean
@@ -12,7 +11,6 @@
     syncState: SyncSnapshot | null
     feedbackUrl: string
     onclose: () => void
-    ontoggletheme: () => void
     ontogglewebp: () => void
     ontogglehelp: () => void
     onopenaccount: () => void
@@ -23,7 +21,6 @@
 
   let {
     menuOpen,
-    theme,
     compressWebp,
     compressionFormat,
     showHelp,
@@ -31,7 +28,6 @@
     syncState,
     feedbackUrl,
     onclose,
-    ontoggletheme,
     ontogglewebp,
     ontogglehelp,
     onopenaccount,
@@ -62,12 +58,6 @@
 {/if}
 <aside id="side-menu" class:open={menuOpen} class="side-menu" aria-label="Main menu" aria-hidden={!menuOpen} inert={!menuOpen}>
   <div class="side-menu-heading"><strong>MENU</strong><button type="button" onclick={closeSafely} aria-label="Close menu">×</button></div>
-  <button
-    class="theme-toggle"
-    onclick={() => { ontoggletheme(); closeSafely() }}
-    aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-    aria-pressed={theme === 'light'}
-  >{theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
   <button
     type="button"
     aria-pressed={compressWebp}

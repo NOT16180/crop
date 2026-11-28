@@ -1302,7 +1302,9 @@
 
 <Toolbar
   {menuOpen}
+  {theme}
   ontogglemenu={() => (menuOpen = !menuOpen)}
+  ontoggletheme={toggleTheme}
   onresetview={() => {
     showHelp = false
     selectedFolderId = ''
@@ -1317,7 +1319,6 @@
 
 <Sidebar
   {menuOpen}
-  {theme}
   {compressWebp}
   {compressionFormat}
   {showHelp}
@@ -1325,7 +1326,6 @@
   {syncState}
   feedbackUrl={FEEDBACK_URL}
   onclose={() => (menuOpen = false)}
-  ontoggletheme={toggleTheme}
   ontogglewebp={toggleWebpCompression}
   ontogglehelp={() => (showHelp = !showHelp)}
   onopenaccount={openAccount}
@@ -1557,7 +1557,7 @@
       </ul>
 
       <h3>6. Offline mode, backups, and theme</h3>
-      <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the menu.</p>
+      <p>Install Crop from your browser menu (<em>Install</em> or <em>Add to Home screen</em>) to open it offline with persistent local storage. Use <strong>Menu → Backup</strong> to download a full ZIP archive anytime; <strong>Restore</strong> merges a backup into your current library without overwriting existing drawings. Switch light/dark mode from the top bar.</p>
 
       <h3>7. Privacy and open-source license</h3>
       <p>Crop has no ads, no tracking, and never uses your artwork for AI training. When signed in, your account and synced files are stored on Cloudflare solely to sync your devices; you can permanently delete your account and cloud data anytime from <strong>Menu → Account</strong>. Crop is open source under the <strong>GNU AGPL-3.0</strong> license.</p>
